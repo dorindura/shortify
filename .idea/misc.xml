@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="GithubDefaultAccount">
-    <option name="defaultAccountId" value="d37d57a8-598f-4a7c-9b66-f91729bb18ed" />
+  <component name="Black">
+    <option name="sdkName" value="Python 3.11 virtualenv at ~/WebstormProjects/shortify/.venv" />
   </component>
 </project>
