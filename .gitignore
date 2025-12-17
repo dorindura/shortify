@@ -64,3 +64,5 @@ tmp/subs
 # python
 __pycache__
 *.pyc
+
+.idea/
