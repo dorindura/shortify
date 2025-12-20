@@ -6,8 +6,12 @@ import { randomUUID } from "crypto";
 import { enqueueJob } from "@server/jobs/queue";
 import { promises as fs } from "fs";
 import path from "path";
+import {requireUser} from "@server/auth/requireUser";
 
 export async function POST(req: Request) {
+    const { user, res } = await requireUser();
+    if (res) return res;
+
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
 
     const job = {
         id: randomUUID(),
+        ownerId: user.id,
         type: "upload" as const,
         source: filePath,
         status: "pending" as const,

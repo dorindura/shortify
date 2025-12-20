@@ -5,9 +5,12 @@ import type { Job, CaptionStyle, JobAspect } from "@lib/jobsStore";
 import { isValidUrl } from "@utils/validators";
 import { randomUUID } from "crypto";
 import { enqueueJob } from "@server/jobs/queue";
+import {requireUser} from "@server/auth/requireUser";
 
 export async function POST(req: Request) {
-    // 👇 IMPORTANT: JSON, not formData
+    const { user, res } = await requireUser();
+    if (res) return res;
+
     const body = await req.json().catch(() => null);
 
     if (!body || typeof body.url !== "string") {
@@ -54,6 +57,7 @@ export async function POST(req: Request) {
 
     const job: Job = {
         id: randomUUID(),
+        ownerId: user.id,
         type: "url",
         source: url,
         status: "pending",

@@ -14,6 +14,7 @@ export type JobStage =
 
 export type Job = {
     id: string;
+    ownerId: string;
     type: JobType;
     source: string;          // original file path or URL
     status: JobStatus;
@@ -32,6 +33,13 @@ export type Job = {
 };
 
 const jobs: Job[] = [];
+
+export function listJobsByOwner(ownerId: string): Job[] {
+    return jobs
+        .filter((j) => j.ownerId === ownerId)
+        .slice()
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
 
 export function addJob(job: Job) {
     jobs.push(job);
