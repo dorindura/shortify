@@ -1,11 +1,11 @@
 // src/app/api/url/route.ts
 import { NextResponse } from "next/server";
-import { addJob } from "@lib/jobsStore";
 import type { Job, CaptionStyle, JobAspect } from "@lib/jobsStore";
 import { isValidUrl } from "@utils/validators";
 import { randomUUID } from "crypto";
 import { enqueueJob } from "@server/jobs/queue";
 import {requireUser} from "@server/auth/requireUser";
+import {createJob} from "@lib/jobsRepo";
 
 export async function POST(req: Request) {
     const { user, res } = await requireUser();
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     // ---- read options from JSON body ----
     const rawAspect = body.aspect as JobAspect | undefined;
     const aspect: JobAspect =
-        rawAspect === "vertical" || rawAspect === "horizontal"
+        rawAspect === "vertical" || rawAspect === "horizontal" || rawAspect === "verticalLetterbox"
             ? rawAspect
             : "horizontal";
 
@@ -77,7 +77,9 @@ export async function POST(req: Request) {
         progress: 0,
     };
 
-    addJob(job);
+    // addJob(job);
+
+    await createJob(job);
     enqueueJob(job).catch(console.error);
 
     return NextResponse.json({ job }, { status: 201 });

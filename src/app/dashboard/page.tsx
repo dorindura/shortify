@@ -13,23 +13,43 @@ export default function HomePage() {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const [aspect, setAspect] = useState<"horizontal" | "vertical">("horizontal");
+    type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
+    const [aspect, setAspect] = useState<JobAspect>("horizontal");
 
-    // User preferences
     const [clipDurationSec, setClipDurationSec] = useState<number>(30);
     const [maxClips, setMaxClips] = useState<number>(3);
     const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);
     const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("karaoke");
 
-    const hasActiveJobs = jobs.some(
+    const hasActiveJobs = Array.isArray(jobs) && jobs.some(
         (j) => j.status === "pending" || j.status === "processing"
     );
 
     async function fetchJobs() {
-        const res = await fetch("/api/jobs");
-        const data = await res.json();
-        setJobs(data.jobs ?? []);
+        try {
+            const res = await fetch("/api/jobs");
+
+            if (!res.ok) {
+                console.warn("Failed to fetch jobs:", res.status);
+                setJobs([]);
+                return;
+            }
+
+            const data = await res.json();
+
+            if (!Array.isArray(data.jobs)) {
+                console.warn("Invalid jobs payload:", data);
+                setJobs([]);
+                return;
+            }
+
+            setJobs(data.jobs);
+        } catch (err) {
+            console.error("fetchJobs error:", err);
+            setJobs([]);
+        }
     }
+
 
     // Load jobs on first render
     useEffect(() => {
@@ -95,7 +115,14 @@ export default function HomePage() {
         }
     }
 
-    const isVertical = aspect === "vertical";
+    const isVertical = aspect === "vertical" || aspect === "verticalLetterbox";
+
+    const optimizedLabel =
+        aspect === "horizontal"
+            ? "YouTube / desktop"
+            : aspect === "vertical"
+                ? "TikTok / Reels / Shorts (crop)"
+                : "TikTok / Reels / Shorts (black bars)";
 
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
@@ -218,12 +245,11 @@ export default function HomePage() {
                                     Output format
                                 </h2>
                                 <span className="text-[10px] text-slate-500">
-                  Optimized for{" "}
-                                    {isVertical ? "TikTok / Reels / Shorts" : "YouTube / desktop"}
-                </span>
+                                    Optimized for {optimizedLabel}
+                                </span>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 <label className="group relative">
                                     <input
                                         type="radio"
@@ -275,6 +301,43 @@ export default function HomePage() {
                                         </div>
                                     </div>
                                 </label>
+
+                                <label className="group relative">
+                                    <input
+                                        type="radio"
+                                        name="aspect"
+                                        value="verticalLetterbox"
+                                        checked={aspect === "verticalLetterbox"}
+                                        onChange={() => setAspect("verticalLetterbox")}
+                                        className="peer sr-only"
+                                    />
+                                    <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-sky-500/60 peer-checked:border-sky-500 peer-checked:bg-slate-900/80">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-medium">9:16 Letterbox</span>
+                                            <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+        Black bars
+      </span>
+                                        </div>
+
+                                        <div className="mt-2 flex items-center gap-2">
+                                            {/* Phone preview with bars */}
+                                            <div className="flex h-10 w-6 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+                                                {/* top bar */}
+                                                <div className="absolute hidden" />
+                                                <div className="flex h-full w-full flex-col">
+                                                    <div className="h-2 bg-slate-950" />
+                                                    <div className="flex-1 bg-slate-800" />
+                                                    <div className="h-2 bg-slate-950" />
+                                                </div>
+                                            </div>
+
+                                            <p className="text-[11px] text-slate-400">
+                                                Full video visible — padded to 9:16 with black bars.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </label>
+
                             </div>
                         </div>
 
@@ -537,9 +600,14 @@ export default function HomePage() {
                                         <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
                                             {job.aspect && (
                                                 <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
-                          {job.aspect === "vertical"
-                              ? "Vertical 9:16"
-                              : "Horizontal 16:9"}
+                            <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
+                                {job.aspect === "vertical"
+                                    ? "Vertical 9:16 (Crop)"
+                                        : job.aspect === "verticalLetterbox"
+                                        ? "Vertical 9:16 (Bars)"
+                                            : "Horizontal 16:9"}
+                            </span>
+
                         </span>
                                             )}
                                             {job.clipDurationSec && (
@@ -619,10 +687,10 @@ export default function HomePage() {
                                                                             alt={title}
                                                                             className="h-full w-full object-cover"
                                                                         />
-                                                                        {isVertical && (
+                                                                        {(aspect === "vertical" || aspect === "verticalLetterbox") && (
                                                                             <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[8px] text-slate-200">
-                                        9:16
-                                      </span>
+                                                                                9:16
+                                                                            </span>
                                                                         )}
                                                                     </div>
                                                                 )}
@@ -633,8 +701,7 @@ export default function HomePage() {
                                                                     </div>
                                                                     <div className="mt-1 flex flex-wrap gap-2">
                                                                         <a
-                                                                            href={url}
-                                                                            download
+                                                                            href={`/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(`short-${idx + 1}.mp4`)}`}
                                                                             className="rounded-full bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110"
                                                                         >
                                                                             Download

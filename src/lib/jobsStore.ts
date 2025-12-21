@@ -1,7 +1,7 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
 export type JobType = "upload" | "url";
-export type JobAspect = "horizontal" | "vertical";
+export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
 export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 
 export type JobStage =

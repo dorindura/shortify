@@ -39,7 +39,11 @@ export async function POST(req: Request) {
 
     const aspectField = formData.get("aspect");
     const aspect: JobAspect =
-        aspectField === "vertical" ? "vertical" : "horizontal";
+        aspectField === "vertical"
+            ? "vertical"
+            : aspectField === "verticalLetterbox"
+                ? "verticalLetterbox"
+                : "horizontal";
 
     const job = {
         id: randomUUID(),

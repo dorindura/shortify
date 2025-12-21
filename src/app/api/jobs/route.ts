@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase/server";
-import { listJobsByOwner } from "@/lib/jobsStore";
+import { listJobsByOwner } from "@/lib/jobsRepo";
 
 export async function GET() {
     const supabase = await supabaseServer();
@@ -8,6 +8,6 @@ export async function GET() {
 
     if (!user) return Response.json({ jobs: [] }, { status: 401 });
 
-    const jobs = listJobsByOwner(user.id);
+    const jobs = await listJobsByOwner(user.id);
     return Response.json({ jobs });
 }
