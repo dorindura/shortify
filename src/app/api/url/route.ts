@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { enqueueJob } from "@server/jobs/queue";
 import {requireUser} from "@server/auth/requireUser";
 import {createJob} from "@lib/jobsRepo";
+import {enforceJobLimits} from "@server/billing/enforceLimits";
 
 export async function POST(req: Request) {
     const { user, res } = await requireUser();
@@ -54,6 +55,14 @@ export async function POST(req: Request) {
         rawStyle === "karaoke"
             ? rawStyle
             : "karaoke";
+
+    const limit = await enforceJobLimits(user.id, { clipDurationSec, maxClips, aspect });
+    if (!limit.ok) {
+        return NextResponse.json(
+            { error: limit.reason, upgradeRequired: true },
+            { status: 402 }
+        );
+    }
 
     const job: Job = {
         id: randomUUID(),

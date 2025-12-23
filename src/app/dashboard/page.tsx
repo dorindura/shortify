@@ -21,6 +21,9 @@ export default function HomePage() {
     const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);
     const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("karaoke");
 
+    const [paywallMessage, setPaywallMessage] = useState<string | null>(null);
+    const [showUpgrade, setShowUpgrade] = useState(false);
+
     const hasActiveJobs = Array.isArray(jobs) && jobs.some(
         (j) => j.status === "pending" || j.status === "processing"
     );
@@ -72,7 +75,7 @@ export default function HomePage() {
         if (!url.trim()) return;
         setLoading(true);
         try {
-            await fetch("/api/url", {
+            const res = await fetch("/api/url", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -84,8 +87,40 @@ export default function HomePage() {
                     captionStyle,
                 }),
             });
+
+            if (res.status === 402) {
+                const data = await res.json().catch(() => ({}));
+                setPaywallMessage(data?.error ?? "Free limit reached. Upgrade to continue.");
+                setShowUpgrade(true);
+                return;
+            }
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setPaywallMessage(data?.error ?? "Failed to create job.");
+                setShowUpgrade(false);
+                return;
+            }
+
+            setPaywallMessage(null);
+            setShowUpgrade(false);
             setUrl("");
             await fetchJobs();
+
+            // await fetch("/api/url", {
+            //     method: "POST",
+            //     headers: { "Content-Type": "application/json" },
+            //     body: JSON.stringify({
+            //         url,
+            //         aspect,
+            //         clipDurationSec,
+            //         maxClips,
+            //         captionsEnabled,
+            //         captionStyle,
+            //     }),
+            // });
+            // setUrl("");
+            // await fetchJobs();
         } finally {
             setLoading(false);
         }
@@ -104,18 +139,43 @@ export default function HomePage() {
 
         setLoading(true);
         try {
-            await fetch("/api/upload", {
-                method: "POST",
-                body: formData,
-            });
+            const res = await fetch("/api/upload", { method: "POST", body: formData });
+
+            if (res.status === 402) {
+                const data = await res.json().catch(() => ({}));
+                setPaywallMessage(data?.error ?? "Free limit reached. Upgrade to continue.");
+                setShowUpgrade(true);
+                return;
+            }
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setPaywallMessage(data?.error ?? "Upload failed.");
+                setShowUpgrade(false);
+                return;
+            }
+
+            setPaywallMessage(null);
+            setShowUpgrade(false);
             e.target.value = "";
             await fetchJobs();
+
+
+            // await fetch("/api/upload", {
+            //     method: "POST",
+            //     body: formData,
+            // });
+            // e.target.value = "";
+            // await fetchJobs();
         } finally {
             setLoading(false);
         }
     }
 
-    const isVertical = aspect === "vertical" || aspect === "verticalLetterbox";
+    async function startCheckout() {
+        const res = await fetch("/api/stripe/checkout", { method: "POST" });
+        const data = await res.json();
+        if (data?.url) window.location.href = data.url;
+    }
 
     const optimizedLabel =
         aspect === "horizontal"
@@ -139,11 +199,14 @@ export default function HomePage() {
             <header className="border-b border-slate-800/70 bg-slate-950/70 backdrop-blur-md">
                 <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-cyan-400 to-emerald-400 shadow-lg shadow-sky-500/40">
-              <span className="text-xs font-black tracking-tight text-slate-950">
-                Sh
-              </span>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/40">
+                            <img
+                                src="/brand/shortify-icon.svg"
+                                alt="Shortify"
+                                className="h-9 w-9"
+                            />
                         </div>
+
                         <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                                 <h1 className="bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 bg-clip-text text-lg font-semibold text-transparent">
@@ -183,6 +246,27 @@ export default function HomePage() {
                                 handle the rest.
                             </p>
                         </div>
+
+                        {paywallMessage && (
+                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px] text-amber-200">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="font-semibold">Limit reached</div>
+                                        <div className="mt-0.5 text-amber-200/90">{paywallMessage}</div>
+                                    </div>
+
+                                    {showUpgrade && (
+                                        <button
+                                            type="button"
+                                            onClick={startCheckout}
+                                            className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-semibold text-slate-950 shadow hover:brightness-110"
+                                        >
+                                            Upgrade
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* URL input */}
                         <form
@@ -323,7 +407,6 @@ export default function HomePage() {
                                             {/* Phone preview with bars */}
                                             <div className="flex h-10 w-6 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
                                                 {/* top bar */}
-                                                <div className="absolute hidden" />
                                                 <div className="flex h-full w-full flex-col">
                                                     <div className="h-2 bg-slate-950" />
                                                     <div className="flex-1 bg-slate-800" />
@@ -702,7 +785,7 @@ export default function HomePage() {
                                                                     <div className="mt-1 flex flex-wrap gap-2">
                                                                         <a
                                                                             href={`/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(`short-${idx + 1}.mp4`)}`}
-                                                                            className="rounded-full bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110"
+                                                                            className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110"
                                                                         >
                                                                             Download
                                                                         </a>
