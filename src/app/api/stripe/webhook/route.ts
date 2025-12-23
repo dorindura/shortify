@@ -1,3 +1,4 @@
+// src/app/api/stripe/webhook/route.ts
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -5,6 +6,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+type InvoiceWithMaybeSubscription = Stripe.Invoice & {
+    subscription?: string | Stripe.Subscription | null;
+};
+
+type SubscriptionWithPeriod = Stripe.Subscription & {
+    current_period_end?: number | null;
+};
 
 export async function POST(req: Request) {
     const sig = req.headers.get("stripe-signature");
@@ -19,8 +28,9 @@ export async function POST(req: Request) {
             sig,
             process.env.STRIPE_WEBHOOK_SECRET!
         );
-    } catch (err: any) {
-        return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return new NextResponse(`Webhook Error: ${message}`, { status: 400 });
     }
 
     const supabase = supabaseAdmin();
@@ -28,7 +38,7 @@ export async function POST(req: Request) {
     async function upsertCustomerMap(customerId: string, userId?: string) {
         if (!userId) return;
 
-        await supabase.from("stripe_customers").upsert(
+        const { error } = await supabase.from("stripe_customers").upsert(
             {
                 user_id: userId,
                 stripe_customer_id: customerId,
@@ -36,20 +46,31 @@ export async function POST(req: Request) {
             },
             { onConflict: "user_id" }
         );
+
+        if (error) console.error("[webhook] upsertCustomerMap error", error);
     }
 
-    async function upsertSubscription(sub: Stripe.Subscription, userId?: string) {
+    async function resolveUserIdByCustomer(customerId: string) {
+        const { data, error } = await supabase
+            .from("stripe_customers")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+
+        if (error) {
+            console.error("[webhook] resolveUserIdByCustomer error", error);
+            return undefined;
+        }
+        return data?.user_id ?? undefined;
+    }
+
+    async function upsertSubscription(subRaw: Stripe.Subscription, userId?: string) {
+        const sub = subRaw as SubscriptionWithPeriod;
+
         const customerId =
             typeof sub.customer === "string" ? sub.customer : sub.customer.id;
 
-        if (!userId) {
-            const { data } = await supabase
-                .from("stripe_customers")
-                .select("user_id")
-                .eq("stripe_customer_id", customerId)
-                .maybeSingle();
-            userId = data?.user_id ?? undefined;
-        }
+        if (!userId) userId = await resolveUserIdByCustomer(customerId);
         if (!userId) return;
 
         const priceId = sub.items.data[0]?.price?.id ?? null;
@@ -61,7 +82,7 @@ export async function POST(req: Request) {
 
         await upsertCustomerMap(customerId, userId);
 
-        await supabase.from("stripe_subscriptions").upsert(
+        const { error } = await supabase.from("stripe_subscriptions").upsert(
             {
                 user_id: userId,
                 stripe_customer_id: customerId,
@@ -74,6 +95,15 @@ export async function POST(req: Request) {
             },
             { onConflict: "user_id" }
         );
+
+        if (error) {
+            console.error("[webhook] upsertSubscription error", {
+                error,
+                userId,
+                customerId,
+                subId: sub.id,
+            });
+        }
     }
 
     try {
@@ -82,7 +112,7 @@ export async function POST(req: Request) {
                 const session = event.data.object as Stripe.Checkout.Session;
 
                 const userId =
-                    (session.client_reference_id as string) ||
+                    (session.client_reference_id as string | null) ??
                     (session.metadata?.user_id as string | undefined);
 
                 const customerId =
@@ -92,8 +122,13 @@ export async function POST(req: Request) {
 
                 if (customerId) await upsertCustomerMap(customerId, userId);
 
-                if (session.subscription && typeof session.subscription === "string") {
-                    const sub = await stripe.subscriptions.retrieve(session.subscription);
+                const subId =
+                    typeof session.subscription === "string"
+                        ? session.subscription
+                        : session.subscription?.id;
+
+                if (subId) {
+                    const sub = await stripe.subscriptions.retrieve(subId);
                     await upsertSubscription(sub, userId);
                 }
                 break;
@@ -109,18 +144,12 @@ export async function POST(req: Request) {
 
             case "invoice.payment_failed":
             case "invoice.payment_succeeded": {
-                const invoice = event.data.object as Stripe.Invoice;
-
-                console.log("or maybe even faster?")
+                const invoice = event.data.object as InvoiceWithMaybeSubscription;
 
                 const subId =
                     typeof invoice.subscription === "string"
                         ? invoice.subscription
-                        : typeof invoice.subscription === "object" && invoice.subscription
-                            ? invoice.subscription.id
-                            : null;
-
-                console.log("does it fail here?")
+                        : invoice.subscription?.id ?? null;
 
                 if (subId) {
                     const sub = await stripe.subscriptions.retrieve(subId);
@@ -132,8 +161,11 @@ export async function POST(req: Request) {
             default:
                 break;
         }
-    } catch (e: any) {
-        return new NextResponse(`Webhook handler failed: ${e.message}`, { status: 500 });
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Unknown error";
+        return new NextResponse(`Webhook handler failed: ${message}`, {
+            status: 500,
+        });
     }
 
     return NextResponse.json({ received: true });
