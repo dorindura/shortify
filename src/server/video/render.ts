@@ -144,10 +144,11 @@ export async function renderShortsWithSubtitles(
             subtitlesFilter = `subtitles='${escapedSubs}':fontsdir='${escapedFontsDir}'`;
         }
 
-        // 🔥 smart crop for this clip (if available)
-        const cropInfo = opts?.smartCrop?.[i] ?? null;
-
         const filters: string[] = [];
+
+        if (aspect === "verticalLetterbox") {
+            filters.push("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black");
+        }
 
         if (aspect === "vertical") {
             // Step 1: scale so height = 1920

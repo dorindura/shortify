@@ -6,12 +6,13 @@ import type { Job } from "@lib/jobsStore";
 export default function ShortsGalleryPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [loading, setLoading] = useState(false);
+    const API = process.env.NEXT_PUBLIC_API_BASE_URL!;
 
     useEffect(() => {
         async function load() {
             setLoading(true);
             try {
-                const res = await fetch("/api/jobs");
+                const res = await fetch(`${API}/api/jobs`);
                 const data = await res.json();
                 setJobs(data.jobs ?? []);
             } finally {

@@ -1,11 +1,14 @@
 // src/server/jobs/worker.ts
 import {
-    getJob,
-    updateJobStatus,
-    setJobClips,
-    setJobCaptionedResults,
-    updateJobStage,
-} from "@lib/jobsStore";
+    dbGetJob,
+    dbUpdateJobStatus,
+    dbSetJobClips,
+    dbSetJobCaptionedResults,
+    dbUpdateJobStage,
+} from "@/server/jobs/jobsDb";
+import path from "path";
+import { uploadLocalFileToStorage } from "@/server/storage/upload";
+
 import { downloadVideoFromUrl } from "@server/video/download";
 import {
     createClipsFromVideo,
@@ -22,33 +25,44 @@ import {
 } from "@server/video/faceCrop";
 import {extractAudioForWhisper} from "@server/video/audio";
 import {analyzeAudioEnergyForClip} from "@server/video/audioEnergy";
+import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
+
+type SubtitleFile = string | { path: string };
+
+function subtitleToPath(s: SubtitleFile): string {
+    return typeof s === "string" ? s : s.path;
+}
 
 export async function processJob(jobId: string) {
-    const job = getJob(jobId);
+    const job = await dbGetJob(jobId);
     if (!job) {
         console.warn(`[processJob] Job not found: ${jobId}`);
         return;
     }
 
+    let downloadedVideoPath: string | null = null;
+    const audioPaths: string[] = [];
+
     try {
-        updateJobStatus(jobId, "processing");
-        updateJobStage(jobId, "downloading", 10);
+        await dbUpdateJobStatus(jobId, "processing");
+        await dbUpdateJobStage(jobId, "downloading", 10);
 
         let videoInput = job.source;
 
         if (job.type === "url") {
-            videoInput = await downloadVideoFromUrl(job.source);
+            downloadedVideoPath = await downloadVideoFromUrl(job.source);
+            videoInput = downloadedVideoPath;
         }
 
         // derive settings from job (with safe defaults)
-        const desiredClipDuration = job.clipDurationSec ?? 30;
-        const desiredMaxClips = job.maxClips ?? 3;
-        const captionsEnabled = job.captionsEnabled ?? true;
+        const desiredClipDuration = job.clip_duration_sec ?? 30;
+        const desiredMaxClips = job.max_clips ?? 3;
+        const captionsEnabled = job.captions_enabled ?? true;
         const aspect = job.aspect ?? "horizontal";
-        const style = job.captionStyle ?? "karaoke";
+        const style = job.caption_style ?? "karaoke";
 
         // --- AI CLIP ANALYSIS ---
-        updateJobStage(jobId, "captioning", 25);
+        await dbUpdateJobStage(jobId, "captioning", 25);
 
         let clips: string[] = [];
         let usedAICandidates = false;
@@ -66,7 +80,7 @@ export async function processJob(jobId: string) {
 
             if (candidates.length > 0) {
                 usedAICandidates = true;
-                updateJobStage(jobId, "clipping", 35);
+                await dbUpdateJobStage(jobId, "clipping", 35);
 
                 const PAD = 2.0;
 
@@ -91,20 +105,21 @@ export async function processJob(jobId: string) {
 
         // --- FALLBACK: legacy clipping ---
         if (!usedAICandidates || clips.length === 0) {
-            updateJobStage(jobId, "clipping", 35);
+            await dbUpdateJobStage(jobId, "clipping", 35);
             clips = await createClipsFromVideo(videoInput, {
                 clipDurationSec: desiredClipDuration,
                 maxClips: desiredMaxClips,
             });
         }
 
-        setJobClips(jobId, clips);
+        await dbSetJobClips(jobId, clips);
 
         const energyByClip: (EnergyFrame[] | null)[] = [];
 
         for (const clipPath of clips) {
             try {
                 const audioMp3Path = await extractAudioForWhisper(clipPath);
+                audioPaths.push(audioMp3Path);
                 const energyFrames = await analyzeAudioEnergyForClip(audioMp3Path);
                 energyByClip.push(energyFrames);
 
@@ -116,14 +131,18 @@ export async function processJob(jobId: string) {
         }
 
         // --- SUBTITLES (AI) ---
-        updateJobStage(jobId, "captioning", 50);
-        const subtitleFiles = await generateSubtitlesForClips(clips, {captionStyle: job.captionStyle});
+        await dbUpdateJobStage(jobId, "captioning", 50);
+        const subtitleFiles = await generateSubtitlesForClips(clips, {captionStyle: job.caption_style});
+
+        const subtitlePaths: string[] = Array.isArray(subtitleFiles)
+            ? (subtitleFiles as SubtitleFile[]).map(subtitleToPath).filter(Boolean)
+            : [];
         // --- FACE-AWARE SMART CROP (NEW) ---
-        updateJobStage(jobId, "clipping", 60);
+        await dbUpdateJobStage(jobId, "clipping", 60);
         const smartCrops = await analyzeFaceCropsForClips(clips, energyByClip);
 
         // --- RENDER (WITH OR WITHOUT SUBTITLES) ---
-        updateJobStage(jobId, "rendering", 70);
+        await dbUpdateJobStage(jobId, "rendering", 70);
 
         let videos: string[] = [];
         let thumbs: string[] = [];
@@ -139,14 +158,49 @@ export async function processJob(jobId: string) {
             }
         ));
 
+        // ✅ Upload rendered videos/thumbs to Storage, store URLs in DB, cleanup local files
+        const videoUrls: string[] = [];
+        const thumbUrls: string[] = [];
 
-        setJobCaptionedResults(jobId, videos, thumbs);
+        for (let i = 0; i < videos.length; i++) {
+            const localVideoPath = videos[i];
+            const localThumbPath = thumbs?.[i];
 
-        updateJobStage(jobId, "finished", 100);
-        updateJobStatus(jobId, "done");
+            const videoObjectPath = `jobs/${jobId}/short-${i + 1}.mp4`;
+            const thumbExt = localThumbPath ? path.extname(localThumbPath) || ".jpg" : ".jpg";
+            const thumbObjectPath = `jobs/${jobId}/thumb-${i + 1}${thumbExt}`;
+
+            const publicVideoUrl = await uploadLocalFileToStorage(localVideoPath, videoObjectPath);
+            videoUrls.push(publicVideoUrl);
+
+            if (localThumbPath) {
+                const publicThumbUrl = await uploadLocalFileToStorage(localThumbPath, thumbObjectPath);
+                thumbUrls.push(publicThumbUrl);
+            } else {
+                thumbUrls.push("");
+            }
+        }
+
+        await dbSetJobCaptionedResults(jobId, videoUrls, thumbUrls);
+
+        await cleanupLocalJobArtifacts({
+            downloadedVideoPath: downloadedVideoPath ?? undefined,
+            clipPaths: clips,
+            audioPaths,
+            subtitlePaths,
+            extraPaths: [
+                ...videos,
+                ...(thumbs ?? []).filter(Boolean),
+            ],
+        });
+
+
+
+        await dbUpdateJobStage(jobId, "finished", 100);
+        await dbUpdateJobStatus(jobId, "done");
     } catch (err) {
         console.error("[processJob] Error:", err);
-        updateJobStatus(jobId, "failed");
-        updateJobStage(jobId, "finished", 100);
+        await dbUpdateJobStatus(jobId, "failed");
+        await dbUpdateJobStage(jobId, "finished", 100);
     }
 }
