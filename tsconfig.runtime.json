@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./dist-server/*"],
+      "@app/*": ["./dist-server/app/*"],
+      "@server/*": ["./dist-server/server/*"],
+      "@components/*": ["./dist-server/components/*"],
+      "@lib/*": ["./dist-server/lib/*"],
+      "@utils/*": ["./dist-server/utils/*"]
+    }
+  }
+}

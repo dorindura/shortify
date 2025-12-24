@@ -1,15 +1,15 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
-import { requireUser } from "@/server/auth/requireUser";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {requireUserNext} from "@server/auth/requireUserNext";
 
 export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST() {
-    const { user, res } = await requireUser();
-    if (res) return res;
+    const user = await requireUserNext();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const priceId = process.env.STRIPE_PRICE_PRO_MONTHLY!;
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
