@@ -5,8 +5,39 @@ import type { Job } from "@lib/jobsStore";
 import { formatDateTime } from "@utils/formats";
 import { useAuth } from "@/components/AuthProvider";
 import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+
+const API = process.env.NEXT_PUBLIC_API_BASE_URL!;
+
+const supabase = supabaseBrowser();
+
+
+async function getAuthToken() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+}
+
+async function authedJsonFetch(input: string, init: RequestInit = {}) {
+    const token = await getAuthToken();
+
+    const headers = new Headers(init.headers);
+    headers.set("Content-Type", "application/json");
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    return fetch(input, { ...init, headers });
+}
+
+async function authedFormFetch(input: string, init: RequestInit = {}) {
+    const token = await getAuthToken();
+
+    const headers = new Headers(init.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    // DO NOT set Content-Type for FormData (browser will set boundary)
+    return fetch(input, { ...init, headers });
+}
 
 export default function HomePage() {
     const [url, setUrl] = useState("");
@@ -30,7 +61,7 @@ export default function HomePage() {
 
     async function fetchJobs() {
         try {
-            const res = await fetch("/api/jobs");
+            const res = await authedJsonFetch(`${API}/api/jobs`);
 
             if (!res.ok) {
                 console.warn("Failed to fetch jobs:", res.status);
@@ -75,9 +106,8 @@ export default function HomePage() {
         if (!url.trim()) return;
         setLoading(true);
         try {
-            const res = await fetch("/api/url", {
+            const res = await authedJsonFetch(`${API}/api/url`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url,
                     aspect,
@@ -87,6 +117,7 @@ export default function HomePage() {
                     captionStyle,
                 }),
             });
+
 
             if (res.status === 402) {
                 const data = await res.json().catch(() => ({}));
@@ -107,20 +138,6 @@ export default function HomePage() {
             setUrl("");
             await fetchJobs();
 
-            // await fetch("/api/url", {
-            //     method: "POST",
-            //     headers: { "Content-Type": "application/json" },
-            //     body: JSON.stringify({
-            //         url,
-            //         aspect,
-            //         clipDurationSec,
-            //         maxClips,
-            //         captionsEnabled,
-            //         captionStyle,
-            //     }),
-            // });
-            // setUrl("");
-            // await fetchJobs();
         } finally {
             setLoading(false);
         }
@@ -139,7 +156,10 @@ export default function HomePage() {
 
         setLoading(true);
         try {
-            const res = await fetch("/api/upload", { method: "POST", body: formData });
+            const res = await authedFormFetch(`${API}/api/upload`, {
+                method: "POST",
+                body: formData,
+            });
 
             if (res.status === 402) {
                 const data = await res.json().catch(() => ({}));
@@ -159,20 +179,33 @@ export default function HomePage() {
             e.target.value = "";
             await fetchJobs();
 
-
-            // await fetch("/api/upload", {
-            //     method: "POST",
-            //     body: formData,
-            // });
-            // e.target.value = "";
-            // await fetchJobs();
         } finally {
             setLoading(false);
         }
     }
 
+    async function downloadWithAuth(fileUrl: string, filename: string) {
+        const res = await authedFormFetch(
+            `${API}/api/download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(filename)}`
+        );
+
+        if (!res.ok) {
+            alert("Download failed");
+            return;
+        }
+
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+    }
+
     async function startCheckout() {
-        const res = await fetch("/api/stripe/checkout", { method: "POST" });
+        const res = await authedJsonFetch(`/api/stripe/checkout`, { method: "POST" });
         const data = await res.json();
         if (data?.url) window.location.href = data.url;
     }
@@ -783,12 +816,12 @@ export default function HomePage() {
                                                                         {title}
                                                                     </div>
                                                                     <div className="mt-1 flex flex-wrap gap-2">
-                                                                        <a
-                                                                            href={`/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(`short-${idx + 1}.mp4`)}`}
+                                                                        <button
+                                                                            onClick={() => downloadWithAuth(url, `short-${idx + 1}.mp4`)}
                                                                             className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110"
                                                                         >
                                                                             Download
-                                                                        </a>
+                                                                        </button>
                                                                         <a
                                                                             href={url}
                                                                             target="_blank"

@@ -1,9 +1,8 @@
-import { supabaseServer } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Job } from "./jobsStore";
 
-export async function createJob(job: Job) {
-    const supabase = await supabaseServer();
-    const { error } = await supabase.from("jobs").insert({
+export async function createJob(job: Job, sb: SupabaseClient) {
+    const { error } = await sb.from("jobs").insert({
         id: job.id,
         owner_id: job.ownerId,
         type: job.type,
@@ -19,15 +18,15 @@ export async function createJob(job: Job) {
         clips: job.clips,
         captioned_clips: job.captionedClips,
         captioned_thumbs: job.captionedThumbs,
+        created_at: job.createdAt,
+        updated_at: job.updatedAt
     });
 
     if (error) throw error;
 }
 
-export async function listJobsByOwner(ownerId: string): Promise<Job[]> {
-    const supabase = await supabaseServer();
-
-    const { data, error } = await supabase
+export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Promise<Job[]> {
+    const { data, error } = await sb
         .from("jobs")
         .select("*")
         .eq("owner_id", ownerId)
@@ -35,7 +34,7 @@ export async function listJobsByOwner(ownerId: string): Promise<Job[]> {
 
     if (error) throw error;
 
-    return (data ?? []).map(row => ({
+    return (data ?? []).map((row: any) => ({
         id: row.id,
         ownerId: row.owner_id,
         type: row.type,
@@ -52,6 +51,6 @@ export async function listJobsByOwner(ownerId: string): Promise<Job[]> {
         captionedClips: row.captioned_clips ?? [],
         captionedThumbs: row.captioned_thumbs ?? [],
         createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        updatedAt: row.updated_at
     }));
 }
