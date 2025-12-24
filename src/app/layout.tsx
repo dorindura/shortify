@@ -6,6 +6,12 @@ import {AuthProvider} from "@components/AuthProvider";
 export const metadata: Metadata = {
     title: "Shortify – Turn any video into shorts",
     description: "Upload or paste a link, get ready-to-post short clips.",
+    icons: {
+        icon: [
+            { url: "/shortify-icon.svg", sizes: "52x52", type: "image/svg" },
+        ],
+        apple: "/shortify-icon.svg",
+    },
 };
 
 export default function RootLayout({
