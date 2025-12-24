@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="260" viewBox="0 0 360 260" fill="none">
+    <defs>
+        <!-- App gradient: sky -> cyan -> emerald -->
+        <linearGradient id="gApp" x1="140" y1="60" x2="330" y2="210" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#0EA5E9"/>  <!-- sky-500 -->
+            <stop offset="0.55" stop-color="#22D3EE"/> <!-- cyan-400 -->
+            <stop offset="1" stop-color="#34D399"/>  <!-- emerald-400 -->
+        </linearGradient>
+
+        <!-- Deep slate shading -->
+        <linearGradient id="gDeep" x1="150" y1="215" x2="300" y2="90" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#020617" stop-opacity="0.55"/> <!-- slate-950-ish -->
+            <stop offset="1" stop-color="#020617" stop-opacity="0"/>
+        </linearGradient>
+
+        <!-- Glow similar to your shadow-sky-500/40 -->
+        <filter id="fGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#0EA5E9" flood-opacity="0.22"/>
+            <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#22D3EE" flood-opacity="0.16"/>
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#34D399" flood-opacity="0.12"/>
+        </filter>
+
+        <!-- Cutout for filmstrip inside play -->
+        <mask id="mFilmCut">
+            <rect width="100%" height="100%" fill="white"/>
+            <rect x="165" y="84" width="76" height="112" rx="10" fill="black"/>
+            <!-- perforation holes (kept visible by painting them white inside the cut region) -->
+            <rect x="174" y="95" width="10" height="10" rx="2" fill="white"/>
+            <rect x="174" y="117" width="10" height="10" rx="2" fill="white"/>
+            <rect x="174" y="139" width="10" height="10" rx="2" fill="white"/>
+            <rect x="174" y="161" width="10" height="10" rx="2" fill="white"/>
+            <rect x="222" y="95" width="10" height="10" rx="2" fill="white"/>
+            <rect x="222" y="117" width="10" height="10" rx="2" fill="white"/>
+            <rect x="222" y="139" width="10" height="10" rx="2" fill="white"/>
+            <rect x="222" y="161" width="10" height="10" rx="2" fill="white"/>
+        </mask>
+    </defs>
+
+    <g filter="url(#fGlow)">
+        <!-- Speed lines (match sky/cyan accents) -->
+        <path d="M72 110 L150 94 L150 106 L72 122 Z" fill="#38BDF8" opacity="0.55"/> <!-- sky-400 -->
+        <path d="M62 132 L150 116 L150 128 L62 144 Z" fill="#22D3EE" opacity="0.42"/> <!-- cyan-400 -->
+        <path d="M74 154 L150 138 L150 150 L74 166 Z" fill="#34D399" opacity="0.30"/> <!-- emerald-400 -->
+
+        <!-- Play button -->
+        <path
+                d="M146 76
+         C146 68 154 63 161 67
+         L308 147
+         C316 152 316 164 308 169
+         L161 249
+         C154 253 146 248 146 240
+         Z"
+                fill="url(#gApp)"
+                mask="url(#mFilmCut)"
+        />
+
+        <!-- subtle depth -->
+        <path
+                d="M146 76
+         C146 68 154 63 161 67
+         L308 147
+         C316 152 316 164 308 169
+         L161 249
+         C154 253 146 248 146 240
+         Z"
+                fill="url(#gDeep)"
+                opacity="0.9"
+        />
+
+        <!-- Filmstrip overlay (slate/white like your UI) -->
+        <g opacity="0.95">
+            <path d="M168 88 H238 Q246 88 246 96 V184 Q246 192 238 192 H168 Q160 192 160 184 V96 Q160 88 168 88 Z"
+                  fill="rgba(2,6,23,0.22)"/>
+            <g fill="rgba(226,232,240,0.80)">
+                <rect x="173" y="96" width="10" height="10" rx="2"/>
+                <rect x="173" y="118" width="10" height="10" rx="2"/>
+                <rect x="173" y="140" width="10" height="10" rx="2"/>
+                <rect x="173" y="162" width="10" height="10" rx="2"/>
+                <rect x="221" y="96" width="10" height="10" rx="2"/>
+                <rect x="221" y="118" width="10" height="10" rx="2"/>
+                <rect x="221" y="140" width="10" height="10" rx="2"/>
+                <rect x="221" y="162" width="10" height="10" rx="2"/>
+            </g>
+
+            <rect x="188" y="106" width="43" height="6" rx="3" fill="rgba(226,232,240,0.55)"/>
+            <rect x="188" y="128" width="43" height="6" rx="3" fill="rgba(226,232,240,0.45)"/>
+            <rect x="188" y="150" width="43" height="6" rx="3" fill="rgba(226,232,240,0.35)"/>
+            <rect x="188" y="172" width="43" height="6" rx="3" fill="rgba(226,232,240,0.25)"/>
+        </g>
+
+        <!-- dotted trail (deep slate) -->
+        <g opacity="0.70" fill="#0B1220">
+            <rect x="78" y="192" width="10" height="6" rx="3"/>
+            <rect x="96" y="192" width="16" height="6" rx="3"/>
+            <rect x="120" y="192" width="22" height="6" rx="3"/>
+            <rect x="150" y="192" width="28" height="6" rx="3"/>
+        </g>
+    </g>
+</svg>
