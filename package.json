@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "build:server": "tsc -p tsconfig.server.json",
-    "start:server": "node dist-server/server/index.js"
+    "start:server": "node -r tsconfig-paths/register dist-server/server/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -22,7 +22,8 @@
     "openai": "^6.9.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "stripe": "^20.1.0"
+    "stripe": "^20.1.0",
+    "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

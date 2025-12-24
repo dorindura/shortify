@@ -36,4 +36,4 @@ COPY --from=build /app/dist-server ./dist-server
 RUN mkdir -p /app/uploads
 
 EXPOSE 8080
-CMD ["node", "dist-server/server/index.js"]
+CMD ["node", "-r", "tsconfig-paths/register", "dist-server/server/index.js"]
