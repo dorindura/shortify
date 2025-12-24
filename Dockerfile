@@ -18,8 +18,6 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# If your pipeline uses ffmpeg / python, keep these.
-# (If you confirm you don't need python/ffmpeg in prod, remove them.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
   python3 \
@@ -29,10 +27,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-# Bring built server output
+# Bring built server output from build stage
 COPY --from=build /app/dist-server ./dist-server
 
-# Create uploads dir (and optionally mount a Fly volume here)
+# ✅ runtime path mapping for aliases -> dist-server/*
+COPY tsconfig.runtime.json ./tsconfig.runtime.json
+ENV TS_NODE_PROJECT=tsconfig.runtime.json
+
 RUN mkdir -p /app/uploads
 
 EXPOSE 8080
