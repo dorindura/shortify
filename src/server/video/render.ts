@@ -177,6 +177,25 @@ export async function renderShortsWithSubtitles(
 
         const filter = filters.join(",");
 
+        // const ffArgs = [
+        //     "-y",
+        //     "-i",
+        //     clipPath,
+        //     "-vf",
+        //     filter,
+        //     "-c:v",
+        //     "libx264",
+        //     "-preset",
+        //     "veryfast",
+        //     "-crf",
+        //     "20",
+        //     "-c:a",
+        //     "copy",
+        //     "-movflags",
+        //     "+faststart",
+        //     outVideoPath,
+        // ];
+
         const ffArgs = [
             "-y",
             "-i",
@@ -186,11 +205,13 @@ export async function renderShortsWithSubtitles(
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            "ultrafast",
             "-crf",
-            "20",
+            "24",
             "-c:a",
             "copy",
+            "-threads",
+            "0",
             "-movflags",
             "+faststart",
             outVideoPath,
