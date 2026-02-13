@@ -78,3 +78,7 @@ build
 .idea/dataSources
 .idea/dataSources.local.xml
 fly.toml
+
+# Force include cookies and important config
+!cookies.txt
+!tsconfig.runtime.json
