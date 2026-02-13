@@ -5,6 +5,16 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
+type SubscriptionDTO = Stripe.Subscription & {
+    current_period_end: number;
+};
+
+type StripeLikeResponse<T> = T | { data: T } | { object: T };
+
+function unwrapStripeObject<T>(res: StripeLikeResponse<T>): T {
+    return (res as any).data ?? (res as any).object ?? (res as T);
+}
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 type InvoiceWithMaybeSubscription = Stripe.Invoice & {
@@ -96,6 +106,8 @@ export async function POST(req: Request) {
             { onConflict: "user_id" }
         );
 
+        if (error) console.error("[webhook] upsertSubscription error", error);
+
         if (error) {
             console.error("[webhook] upsertSubscription error", {
                 error,
@@ -127,9 +139,27 @@ export async function POST(req: Request) {
                         ? session.subscription
                         : session.subscription?.id;
 
-                if (subId) {
-                    const sub = await stripe.subscriptions.retrieve(subId);
-                    await upsertSubscription(sub, userId);
+                if (subId && userId && customerId) {
+                    const subRes = await stripe.subscriptions.retrieve(subId);
+                    const sub = unwrapStripeObject<Stripe.Subscription>(subRes as any) as SubscriptionDTO;
+
+                    const currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString();
+
+                    await upsertCustomerMap(customerId, userId);
+
+                    await supabase.from("stripe_subscriptions").upsert(
+                        {
+                            user_id: userId,
+                            stripe_customer_id: customerId,
+                            stripe_subscription_id: sub.id,
+                            status: sub.status,
+                            price_id: sub.items.data[0]?.price?.id ?? null,
+                            current_period_end: currentPeriodEnd,
+                            cancel_at_period_end: sub.cancel_at_period_end ?? false,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { onConflict: "user_id" }
+                    );
                 }
                 break;
             }
@@ -152,7 +182,8 @@ export async function POST(req: Request) {
                         : invoice.subscription?.id ?? null;
 
                 if (subId) {
-                    const sub = await stripe.subscriptions.retrieve(subId);
+                    const subRes = await stripe.subscriptions.retrieve(subId);
+                    const sub = unwrapStripeObject<Stripe.Subscription>(subRes as any);
                     await upsertSubscription(sub);
                 }
                 break;
