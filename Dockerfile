@@ -7,24 +7,6 @@ RUN npm ci
 COPY . .
 RUN npm run build:server
 
-## ---------- runtime stage ----------
-#FROM node:20-bookworm-slim AS runner
-#WORKDIR /app
-#ENV NODE_ENV=production
-#
-## Instalăm dependențele și adăugăm un runtime JS (deno este foarte bine suportat de yt-dlp)
-#RUN apt-get update && apt-get install -y --no-install-recommends \
-#  ffmpeg \
-#  python3 \
-#  curl \
-#  ca-certificates \
-#  unzip \
-#  && curl -fsSL https://deno.land/x/install/install.sh | sh \
-#  && ln -s /root/.deno/bin/deno /usr/local/bin/deno \
-#  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-#  && chmod a+rx /usr/local/bin/yt-dlp \
-#  && rm -rf /var/lib/apt/lists/*
-
 # ---------- runtime stage ----------
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -34,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
   python3 \
   python3-pip \
+  libsndfile1 \
   python3-venv \
   libgl1-mesa-glx \
   libglib2.0-0 \
@@ -48,7 +31,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip3 install --no-cache-dir --break-system-packages \
   opencv-python-headless \
-  mediapipe
+  mediapipe \
+  librosa \
+  numpy
+
+COPY src/python ./src/python
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
