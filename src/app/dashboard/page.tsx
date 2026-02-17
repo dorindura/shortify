@@ -235,7 +235,7 @@ export default function HomePage() {
                         <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/40">
                             <img
                                 src="/brand/shortify-icon.svg"
-                                alt="Shortify"
+                                alt="Hookify"
                                 className="h-9 w-9"
                             />
                         </div>
@@ -243,7 +243,7 @@ export default function HomePage() {
                         <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                                 <h1 className="bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 bg-clip-text text-lg font-semibold text-transparent">
-                                    Shortify
+                                    Hookify
                                 </h1>
                                 <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-medium text-slate-300/90 ring-1 ring-slate-700/80">
                   v0.1 • Face-Aware Engine

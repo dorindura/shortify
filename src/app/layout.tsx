@@ -4,7 +4,7 @@ import "./globals.css";
 import {AuthProvider} from "@components/AuthProvider";
 
 export const metadata: Metadata = {
-    title: "Shortify – Turn any video into shorts",
+    title: "Hookify – Turn any video into shorts",
     description: "Upload or paste a link, get ready-to-post short clips.",
     icons: {
         icon: [
