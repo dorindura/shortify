@@ -29,12 +29,11 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
 
     const args = [
         url,
-        '-f', 'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best',
+        '-f', 'bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/best[vcodec^=avc1][height<=1080]/best[ext=mp4]/best',
         '-o', finalPath,
         '--merge-output-format', 'mp4',
         '--no-playlist',
         '--no-check-certificate',
-        '--prefer-free-formats',
         '--add-header', 'Referer:https://www.google.com/',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     ];

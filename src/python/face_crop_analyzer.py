@@ -1,13 +1,25 @@
-import argparse
-import json
 import os
 import sys
-from typing import List, Dict, Any, Optional, Tuple
 
+os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+os.environ['LD_LIBRARY_PATH'] = '/usr/lib/x86_64-linux-gnu'
+os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
+
+import argparse
+import json
 import math
 import cv2
+from typing import List, Dict, Any, Optional, Tuple
 import mediapipe as mp
 
+mp_face_detection = mp.solutions.face_detection
+mp_face_mesh = mp.solutions.face_mesh
+
+cv2.setUseOptimized(True)
+cv2.ocl.setUseOpenCL(False)
 
 def clamp01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
@@ -81,7 +93,7 @@ def norm_bbox_to_px(b, W: int, H: int) -> Tuple[int, int, int, int]:
     y0 = max(0, min(H - 1, to_int(b["y0"] * H)))
     x1 = max(0, min(W - 1, to_int(b["x1"] * W)))
     y1 = max(0, min(H - 1, to_int(b["y1"] * H)))
-    # ensure proper ordering
+
     if x1 <= x0:
         x1 = min(W - 1, x0 + 1)
     if y1 <= y0:
@@ -107,11 +119,8 @@ def analyze_clip(
         clip_path: str,
         sample_stride: int = 2,
         min_track_points: int = 5,
-        # max_assign_dist: float = 0.18,   # center distance gate (normalized)
-        # min_iou_gate: float = 0.04,      # bbox overlap gate (prevents swaps)
-        # max_missed_sec: float = 1.0,     # KEEP track alive this long if temporarily missing
-        max_assign_dist: float = 0.28,   # allow re-connecting after motion/jitter
-        min_iou_gate: float = 0.01,      # don't kill matches because bbox moved a bit
+        max_assign_dist: float = 0.28,
+        min_iou_gate: float = 0.01,
         max_missed_sec: float = 2.5,
         debug_out: Optional[str] = None,
         debug_max_frames: int = 0,
@@ -128,26 +137,22 @@ def analyze_clip(
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     duration = frame_count / fps if fps > 0 else 0.0
 
-    # ✅ Multi-face detector (this is what you were missing)
-    mp_fd = mp.solutions.face_detection.FaceDetection(
-        model_selection=1,             # better for farther faces / wider shots
-        min_detection_confidence=0.30  # lower to catch smaller faces
+    mp_fd = mp_face_detection.FaceDetection(
+        model_selection=0,
+        min_detection_confidence=0.30
     )
 
-    # ✅ FaceMesh only used per detected bbox ROI (max 1 face)
-    mp_fm = mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=True,        # we are feeding cropped "images"
+    mp_fm = mp_face_mesh.FaceMesh(
+        static_image_mode=True,
         max_num_faces=1,
-        refine_landmarks=True,
+        refine_landmarks=False,
         min_detection_confidence=0.5,
     )
 
-    # tracks: { id, last_center, last_bbox_edges, last_t, missed, timeline }
     tracks: List[Dict[str, Any]] = []
     finished_tracks: List[Dict[str, Any]] = []
     next_id = 0
 
-    # debug writer
     writer = None
     if debug_out:
         W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
@@ -164,16 +169,22 @@ def analyze_clip(
         if not ret:
             break
 
-        if sample_stride > 1 and (frame_idx % sample_stride != 0):
+        # OPTIMIZARE: Analizam doar fiecare al 5-lea cadru
+        if frame_idx % 5 != 0:
             frame_idx += 1
             continue
 
         t = frame_idx / fps
-        H, W = frame.shape[:2]
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        H_orig, W_orig = frame.shape[:2]
 
-        # 1) FaceDetection -> multiple bboxes
-        det_results = mp_fd.process(rgb)
+        # OPTIMIZARE: Redimensionam pentru analiza rapida (MediaPipe pe CPU)
+        analyze_width = 640
+        analyze_height = int(H_orig * (640 / W_orig))
+        small_frame = cv2.resize(frame, (analyze_width, analyze_height))
+        rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        H_small, W_small = small_frame.shape[:2]
+
+        det_results = mp_fd.process(rgb_small)
         detections: List[Dict[str, Any]] = []
 
         if det_results.detections:
@@ -183,14 +194,9 @@ def analyze_clip(
                     continue
                 bb = loc.relative_bounding_box
 
-                x = clamp01(bb.xmin)
-                y = clamp01(bb.ymin)
-                w = clamp01(bb.width)
-                h = clamp01(bb.height)
-
-                cx = clamp01(x + w / 2.0)
-                cy = clamp01(y + h / 2.0)
-
+                # Coordonatele sunt normalizate (0.0 - 1.0), deci raman valabile
+                cx = clamp01(bb.xmin + bb.width / 2.0)
+                cy = clamp01(bb.ymin + bb.height / 2.0)
                 raw_w = clamp01(bb.width)
                 raw_h = clamp01(bb.height)
 
@@ -206,26 +212,20 @@ def analyze_clip(
                     "mouth": 0.0,
                 })
 
-        # 2) For EACH detection: run FaceMesh on ROI -> mouth score
+        # Calculam mouth openness pe ROI din imaginea mica
         for d in detections:
-            x0, y0, x1, y1 = norm_bbox_to_px(d["bbox"], W, H)
-            roi = rgb[y0:y1, x0:x1]
+            x0, y0, x1, y1 = norm_bbox_to_px(d["bbox"], W_small, H_small)
+            roi = rgb_small[y0:y1, x0:x1]
             if roi.size == 0:
-                d["mouth"] = 0.0
                 continue
 
             mesh_res = mp_fm.process(roi)
-            if not mesh_res.multi_face_landmarks:
-                d["mouth"] = 0.0
-                continue
+            if mesh_res.multi_face_landmarks:
+                lm = mesh_res.multi_face_landmarks[0].landmark
+                d["mouth"] = float(mouth_openness_from_landmarks(lm))
 
-            lm = mesh_res.multi_face_landmarks[0].landmark
-            d["mouth"] = float(mouth_openness_from_landmarks(lm))
-
-        # 3) Assignment: detections -> tracks
+        # Tracking logic (aceasta ramane neschimbata dar foloseste detections de mai sus)
         used = set()
-
-        # prune / keep tracks (TTL)
         alive_tracks = []
         for tr in tracks:
             if (t - tr.get("last_t", -1e9)) <= max_missed_sec:
@@ -233,26 +233,17 @@ def analyze_clip(
             else:
                 finished_tracks.append(tr)
         tracks = alive_tracks
-
-        # prefer recent tracks first
         tracks.sort(key=lambda tr: tr.get("last_t", -1), reverse=True)
 
         for tr in tracks:
             best_j = None
             best_score = 1e9
-
             for j, det in enumerate(detections):
-                if j in used:
-                    continue
-
+                if j in used: continue
                 d = euclid((det["cx"], det["cy"]), tr["last_center"])
-                if d > max_assign_dist:
-                    continue
-
+                if d > max_assign_dist: continue
                 ov = iou(det["bbox"], tr["last_bbox_edges"])
-                if ov < min_iou_gate:
-                    continue
-
+                if ov < min_iou_gate: continue
                 score = d - 0.15 * ov
                 if score < best_score:
                     best_score = score
@@ -261,37 +252,25 @@ def analyze_clip(
             if best_j is not None:
                 det = detections[best_j]
                 used.add(best_j)
-
                 tr["timeline"].append({
-                    "t": float(t),
-                    "x": det["cx"],
-                    "y": det["cy"],
-                    "w": det["w"],
-                    "h": det["h"],
-                    "mouth": det["mouth"],
+                    "t": float(t), "x": det["cx"], "y": det["cy"],
+                    "w": det["w"], "h": det["h"], "mouth": det["mouth"],
                 })
                 tr["last_center"] = (det["cx"], det["cy"])
-                # tr["last_bbox_edges"] = det["bbox"]
-
-                # Smooth bbox to reduce jitter (EMA)
                 prev = tr["last_bbox_edges"]
                 cur = det["bbox"]
-                alpha = 0.7  # higher = smoother
+                alpha = 0.7
                 tr["last_bbox_edges"] = {
                     "x0": alpha * prev["x0"] + (1 - alpha) * cur["x0"],
                     "y0": alpha * prev["y0"] + (1 - alpha) * cur["y0"],
                     "x1": alpha * prev["x1"] + (1 - alpha) * cur["x1"],
                     "y1": alpha * prev["y1"] + (1 - alpha) * cur["y1"],
                 }
-
                 tr["last_t"] = t
-
                 tr["missed_sec"] = 0.0
 
-        # 4) Create new tracks for unused detections
         for j, det in enumerate(detections):
-            if j in used:
-                continue
+            if j in used: continue
             tracks.append({
                 "id": next_id,
                 "last_center": (det["cx"], det["cy"]),
@@ -299,65 +278,28 @@ def analyze_clip(
                 "last_t": t,
                 "missed_sec": 0.0,
                 "timeline": [{
-                    "t": float(t),
-                    "x": det["cx"],
-                    "y": det["cy"],
-                    "w": det["w"],
-                    "h": det["h"],
-                    "mouth": det["mouth"],
+                    "t": float(t), "x": det["cx"], "y": det["cy"],
+                    "w": det["w"], "h": det["h"], "mouth": det["mouth"],
                 }],
             })
             next_id += 1
 
-        # 5) Debug draw
+        # Debug draw corectat sa foloseasca W_orig, H_orig
         if writer is not None:
             dbg = frame.copy()
-
-            # draw detections (green)
             for d in detections:
-                x0, y0, x1, y1 = norm_bbox_to_px(d["bbox"], W, H)
+                x0, y0, x1, y1 = norm_bbox_to_px(d["bbox"], W_orig, H_orig)
                 cv2.rectangle(dbg, (x0, y0), (x1, y1), (0, 255, 0), 2)
-                cv2.circle(dbg, (to_int(d["cx"] * W), to_int(d["cy"] * H)), 4, (0, 255, 0), -1)
-                cv2.putText(
-                    dbg,
-                    f"mouth={d['mouth']:.3f}",
-                    (x0, max(0, y0 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 0),
-                    1,
-                    cv2.LINE_AA,
-                )
-
-            # draw track ids (yellow) at last center
-            for tr in tracks:
-                cx, cy = tr["last_center"]
-                px = to_int(cx * W)
-                py = to_int(cy * H)
-                cv2.circle(dbg, (px, py), 6, (0, 255, 255), -1)
-                cv2.putText(
-                    dbg,
-                    f"id={tr['id']}",
-                    (px + 8, py - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
-
             writer.write(dbg)
             written += 1
-            if debug_max_frames and written >= debug_max_frames:
-                break
+            if debug_max_frames and written >= debug_max_frames: break
 
         frame_idx += 1
 
     cap.release()
     mp_fd.close()
     mp_fm.close()
-    if writer is not None:
-        writer.release()
+    if writer is not None: writer.release()
 
     all_tracks = finished_tracks + tracks
     faces = []
@@ -392,9 +334,13 @@ def main():
             )
         )
 
-    json.dump(results, sys.stdout)
+    output_json = json.dumps(results)
+    sys.stdout.write(output_json)
     sys.stdout.flush()
 
-
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        sys.stderr.write(f"Python script error: {str(e)}\n")
+        sys.exit(1)

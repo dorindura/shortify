@@ -11,6 +11,13 @@ RUN npm run build:server
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV GALLIUM_DRIVER=llvmpipe
+ENV MEDIAPIPE_DISABLE_GPU=1
+ENV CUDA_VISIBLE_DEVICES=-1
+ENV EGL_PLATFORM=surfaceless
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV GALLIUM_DRIVER=llvmpipe
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
@@ -18,8 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-pip \
   libsndfile1 \
   python3-venv \
-  libgl1-mesa-glx \
   libglib2.0-0 \
+  libnss3 \
+  libgl1-mesa-glx \
+  libgl1-mesa-dri \
+  libosmesa6 \
   curl \
   ca-certificates \
   unzip \
@@ -30,10 +40,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --no-cache-dir --break-system-packages \
+  numpy==1.24.3 \
   opencv-python-headless \
-  mediapipe \
-  librosa \
-  numpy
+  protobuf==3.20.3 \
+  mediapipe==0.10.9 \
+  librosa
 
 COPY src/python ./src/python
 

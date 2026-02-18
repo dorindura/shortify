@@ -2,9 +2,13 @@ import librosa
 import numpy as np
 import json
 import sys
+import warnings
+
+warnings.filterwarnings("ignore")
 
 def analyze_audio_energy(audio_path, hop_ms=250):
-    y, sr = librosa.load(audio_path, sr=None, mono=True)
+    # y, sr = librosa.load(audio_path, sr=None, mono=True)
+    y, sr = librosa.load(audio_path, sr=22050, mono=True)
 
     hop_length = int(sr * hop_ms / 1000)
     frame_length = hop_length * 2
