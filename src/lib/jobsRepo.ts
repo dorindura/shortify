@@ -30,6 +30,7 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
         .from("jobs")
         .select("*")
         .eq("owner_id", ownerId)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
     if (error) throw error;

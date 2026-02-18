@@ -11,6 +11,7 @@ export async function enforceJobLimits(
     const FREE_MAX_JOBS_PER_DAY = 2;
     const FREE_MAX_DURATION = 30;
     const FREE_MAX_CLIPS = 3;
+    const FREE_MAX_TOTAL_JOBS = 10;
 
     if (requested.clipDurationSec > FREE_MAX_DURATION) {
         return { ok: false as const, reason: "Free plan: max 30s per short." };
@@ -33,6 +34,16 @@ export async function enforceJobLimits(
 
     if (used >= FREE_MAX_JOBS_PER_DAY) {
         return { ok: false as const, reason: "Free plan: daily job limit reached." };
+    }
+
+    const { count } = await supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .is("deleted_at", null)
+
+    if ((count ?? 0) >= FREE_MAX_TOTAL_JOBS) {
+        return { ok: false as const, reason: "Free plan: max 10 jobs total. Upgrade to Pro to create more." };
     }
 
     await supabase.from("usage_daily").upsert(
