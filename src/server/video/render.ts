@@ -61,7 +61,8 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
 
     const exprForCx = (cxNorm: number): string => {
         const cx = Math.max(0, Math.min(1, cxNorm));
-        return `min(max(in_w*${cx.toFixed(4)}-540\\,0)\\,in_w-1080)`;
+        const cw = "in_h*(9/16)";
+        return `min(max(in_w*${cx.toFixed(4)}-${cw}/2\\,0)\\,in_w-${cw})`;
     };
 
     const smoothstep = (u: string) =>
@@ -147,28 +148,21 @@ export async function renderShortsWithSubtitles(
         const filters: string[] = [];
 
         if (aspect === "verticalLetterbox") {
-            filters.push("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black");
+            filters.push("scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black");
         }
 
         if (aspect === "vertical") {
-            // Step 1: scale so height = 1920
-            filters.push("scale=-1:1920:flags=lanczos");
-
             const cropInfo = opts?.smartCrop?.[i] ?? null;
 
             if (cropInfo && cropInfo.segments && cropInfo.segments.length > 0) {
                 const xExpr = buildCropXExprForSegments(cropInfo.segments);
-                // xExpr already has its internal commas escaped
-                filters.push(`crop=1080:1920:${xExpr}:0`);
-            } else {
-                // fallback: center crop as before
-                filters.push("crop=1080:1920:(in_w-1080)/2:0");
-            }
-        }
 
-        // horizontal: we can optionally leave as full frame for now
-        if (aspect === "horizontal") {
-            // no scaling/cropping yet (we can add later)
+                filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
+            } else {
+                filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
+            }
+
+            filters.push("scale=1080:1920:flags=bicubic");
         }
 
         if (subtitlesFilter) {
@@ -177,70 +171,19 @@ export async function renderShortsWithSubtitles(
 
         const filter = filters.join(",");
 
-        // const ffArgs = [
-        //     "-y",
-        //     "-i",
-        //     clipPath,
-        //     "-vf",
-        //     filter,
-        //     "-c:v",
-        //     "libx264",
-        //     "-preset",
-        //     "veryfast",
-        //     "-crf",
-        //     "20",
-        //     "-c:a",
-        //     "copy",
-        //     "-movflags",
-        //     "+faststart",
-        //     outVideoPath,
-        // ];
-
-        // const ffArgs = [
-        //     "-y",
-        //     "-i",
-        //     clipPath,
-        //     "-vf",
-        //     filter,
-        //     "-c:v",
-        //     "libx264",
-        //     "-preset",
-        //     "ultrafast",
-        //     "-crf",
-        //     "24",
-        //     "-c:a",
-        //     "copy",
-        //     "-threads",
-        //     "0",
-        //     "-movflags",
-        //     "+faststart",
-        //     outVideoPath,
-        // ];
-
         const ffArgs = [
             "-y",
-            "-i",
-            clipPath,
-            "-vf",
-            filter,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "28",
-            "-maxrate",
-            "5M",
-            "-bufsize",
-            "10M",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-threads",
-            "0",
-            "-movflags",
-            "+faststart",
+            "-i", clipPath,
+            "-vf", filter,
+            "-c:v", "libx264",
+            "-preset", "superfast",
+            "-crf", "24",
+            "-maxrate", "4M",
+            "-bufsize", "7M",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-threads", "2",
+            "-movflags", "+faststart",
             outVideoPath,
         ];
 
