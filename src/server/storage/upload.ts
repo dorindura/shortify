@@ -1,22 +1,13 @@
 // src/server/storage/upload.ts
 import fs from "fs/promises";
 import path from "path";
-import { supabaseAdmin } from "@/lib/supabase/admin"; // adjust import if needed
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const BUCKET = "shorts"; // your bucket name
+const BUCKET = "shorts";
 
 function toFsPath(p: string) {
-    // If you pass "/shorts/abc.mp4", treat it as public URL path
-    if (p.startsWith("/")) {
-        return path.join(process.cwd(), "public", p); // -> .../public/shorts/abc.mp4
-    }
-
-    // If you pass "shorts/abc.mp4", also treat as public-relative
-    if (p.startsWith("shorts/")) {
-        return path.join(process.cwd(), "public", p);
-    }
-
-    // Otherwise assume it's already a real filesystem path
+    if (p.startsWith("/")) return path.join(process.cwd(), "public", p);
+    if (p.startsWith("shorts/")) return path.join(process.cwd(), "public", p);
     return p;
 }
 
@@ -24,7 +15,8 @@ export async function uploadLocalFileToStorage(localPath: string, objectPath: st
     const supabase = supabaseAdmin();
 
     const fsPath = toFsPath(localPath);
-    const bytes = await fs.readFile(fsPath);
+    const bytesBuf = await fs.readFile(fsPath);
+    const sizeBytes = bytesBuf.byteLength;
 
     const ext = path.extname(objectPath).toLowerCase();
     const contentType =
@@ -35,13 +27,16 @@ export async function uploadLocalFileToStorage(localPath: string, objectPath: st
 
     const { error } = await supabase.storage
         .from(BUCKET)
-        .upload(objectPath, bytes, {
-            contentType,
-            upsert: true,
-        });
+        .upload(objectPath, bytesBuf, { contentType, upsert: true });
 
     if (error) throw error;
 
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
-    return data.publicUrl;
+
+    return {
+        publicUrl: data.publicUrl,
+        objectPath,
+        sizeBytes,
+        bucket: BUCKET,
+    };
 }
