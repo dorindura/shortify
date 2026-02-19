@@ -304,9 +304,6 @@ export default function HomePage() {
                 <h1 className="bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 bg-clip-text text-lg font-semibold text-transparent">
                   Hookify
                 </h1>
-                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] font-medium text-slate-300/90 ring-1 ring-slate-700/80">
-                  v0.1 • Face-Aware Engine
-                </span>
               </div>
               <p className="mt-0.5 text-[11px] text-slate-400">
                 Auto-clipped, AI-captioned, face-tracked shorts in one click.
@@ -683,7 +680,7 @@ export default function HomePage() {
         </div>
 
         {/* RIGHT COLUMN – jobs */}
-        <aside className="mt-1 w-full lg:mt-0 lg:w-[360px]">
+        <aside className="mt-1 w-full lg:mt-0 lg:w-[460px]">
           <section className="sticky top-20 space-y-4 rounded-2xl border border-slate-800/80 bg-slate-950/80 p-5 shadow-xl shadow-black/40 backdrop-blur-md">
             <div className="flex items-center justify-between gap-2">
               <div>

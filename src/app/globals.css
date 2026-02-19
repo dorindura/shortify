@@ -1,2 +1,27 @@
 @import "tailwindcss";
 
+@layer base {
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+        display: block;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-slate-900/50 rounded-full border border-slate-800/30;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-slate-700 rounded-full border-2 border-solid border-transparent bg-clip-padding;
+        min-height: 40px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-slate-500;
+    }
+
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: theme('colors.slate.700') theme('colors.slate.900');
+    }
+}
