@@ -186,14 +186,38 @@ export default function HomePage() {
     }
   }
 
-  async function deleteJob(jobId: string) {
-    const res = await authedJsonFetch(`${API}/api/jobs/${jobId}`, { method: "DELETE" });
-    if (res.ok) {
-      await fetchJobs();
-      return;
+  async function handleManageBilling() {
+    setLoading(true);
+    try {
+      const res = await authedJsonFetch(`/api/stripe/portal`, { method: "POST" });
+      const data = await res.json();
+      if (data?.url) window.location.href = data.url;
+    } finally {
+      setLoading(false);
     }
-    const data = await res.json().catch(() => ({}));
-    alert(data?.error ?? "Delete failed");
+  }
+
+  const [deletingJobs, setDeletingJobs] = useState<Record<string, boolean>>({});
+
+  async function deleteJob(jobId: string) {
+    setDeletingJobs((prev) => ({ ...prev, [jobId]: true }));
+    try {
+      const res = await authedJsonFetch(`${API}/api/jobs/${jobId}`, { method: "DELETE" });
+
+      if (res.ok) {
+        await fetchJobs();
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      alert(data?.error ?? "Delete failed");
+    } finally {
+      setDeletingJobs((prev) => {
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
+    }
   }
 
   async function downloadWithAuth(fileUrl: string, filename: string) {
@@ -237,16 +261,29 @@ export default function HomePage() {
   }, [authLoading, user, router]);
 
   const [role, setRole] = useState<"user" | "admin">("user");
+  const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
     (async () => {
       if (!user) return;
-      const { data } = await supabase
+
+      const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
-      if (data?.role === "admin") setRole("admin");
+
+      const { data: subscription } = await supabase
+        .from("stripe_subscriptions")
+        .select("status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile?.role === "admin") setRole("admin");
+
+      if (subscription?.status === "active" || subscription?.status === "trialing") {
+        setIsPro(true);
+      }
     })();
   }, [user]);
 
@@ -282,6 +319,22 @@ export default function HomePage() {
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
               Engine status: <span className="font-medium text-emerald-300">Online</span>
             </span>
+            {isPro ? (
+              <button
+                onClick={handleManageBilling}
+                disabled={loading}
+                className="rounded-full px-3 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-200"
+              >
+                {loading ? "Loading..." : "Manage Plan"}
+              </button>
+            ) : (
+              <button
+                onClick={startCheckout}
+                className="rounded-full bg-sky-500/10 px-3 py-1 text-[11px] font-semibold text-sky-400 ring-1 ring-sky-500/20 transition-all hover:bg-sky-500/20"
+              >
+                Upgrade to Pro
+              </button>
+            )}
             {role === "admin" && (
               <button
                 onClick={() => router.push("/admin")}
@@ -693,12 +746,13 @@ export default function HomePage() {
                               !isFailed &&
                               job.status.toUpperCase()}
                           </span>
-                          {canDeleteJobs && (
+                          {canDeleteJobs && (isDone || isFailed) && (
                             <button
                               onClick={() => deleteJob(job.id)}
-                              className="rounded-full border border-rose-500/60 px-2.5 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                              disabled={!!deletingJobs[job.id]}
+                              className="rounded-full border border-rose-500/60 px-2.5 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              Delete
+                              {deletingJobs[job.id] ? "Deleting..." : "Delete"}
                             </button>
                           )}
                         </div>
