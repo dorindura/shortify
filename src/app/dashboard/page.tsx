@@ -293,7 +293,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-50">
       {/* NAVBAR */}
       <header className="border-b border-slate-800/70 bg-slate-950/70 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-950/40">
               <img src="/brand/shortify-icon.svg" alt="Hookify" className="h-9 w-9" />
@@ -345,7 +345,7 @@ export default function HomePage() {
       </header>
 
       {/* MAIN CONTENT */}
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row">
         {/* LEFT COLUMN – controls */}
         <div className="flex-1 space-y-5">
           {/* URL + upload card */}
@@ -529,18 +529,18 @@ export default function HomePage() {
             {/* Clip settings */}
             <div className="mt-4 grid gap-4 border-t border-slate-800/80 pt-4 md:grid-cols-2">
               {/* Clip length */}
-              <div className="space-y-2">
+              <div className="space-y-2 md:border-r md:border-slate-800/80 md:pr-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-slate-200">Clip length</h3>
                   <span className="text-[10px] text-slate-500">~{clipDurationSec}s per short</span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap justify-center gap-1.5">
                   {[15, 20, 30, 45, 60].map((val) => (
                     <button
                       key={val}
                       type="button"
                       onClick={() => setClipDurationSec(val)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                      className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
                         clipDurationSec === val
                           ? "bg-sky-500 text-slate-950 shadow shadow-sky-500/40"
                           : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
@@ -553,18 +553,18 @@ export default function HomePage() {
               </div>
 
               {/* Max clips */}
-              <div className="space-y-2">
+              <div className="space-y-2 md:pl-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-slate-200">Max clips per video</h3>
                   <span className="text-[10px] text-slate-500">Up to {maxClips} shorts</span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap justify-center gap-1.5">
                   {[1, 2, 3, 4, 5].map((val) => (
                     <button
                       key={val}
                       type="button"
                       onClick={() => setMaxClips(val)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                      className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
                         maxClips === val
                           ? "bg-emerald-500 text-slate-950 shadow shadow-emerald-500/40"
                           : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
@@ -680,7 +680,7 @@ export default function HomePage() {
         </div>
 
         {/* RIGHT COLUMN – jobs */}
-        <aside className="mt-1 w-full lg:mt-0 lg:w-[460px]">
+        <aside className="mt-1 w-full lg:mt-0 lg:w-[440px]">
           <section className="sticky top-20 space-y-4 rounded-2xl border border-slate-800/80 bg-slate-950/80 p-5 shadow-xl shadow-black/40 backdrop-blur-md">
             <div className="flex items-center justify-between gap-2">
               <div>
