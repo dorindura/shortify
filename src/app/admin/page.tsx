@@ -116,11 +116,12 @@ export default function AdminPage() {
     loadUsers();
   }, [role]);
 
+  const [deletingJobs, setDeletingJobs] = useState<Record<string, boolean>>({});
+
   async function deleteJob(jobId: string) {
-    if (!confirm("Delete this job?")) return;
-    setBusy(true);
+    setDeletingJobs((prev) => ({ ...prev, [jobId]: true }));
     try {
-      const res = await authedJsonFetch(`${API}/api/admin/jobs/${jobId}`, { method: "DELETE" });
+      const res = await authedJsonFetch(`${API}/api/jobs/${jobId}`, { method: "DELETE" });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
         alert(e?.error ?? "Delete failed");
@@ -129,7 +130,11 @@ export default function AdminPage() {
       await loadJobs();
       await loadOverview();
     } finally {
-      setBusy(false);
+      setDeletingJobs((prev) => {
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
     }
   }
 
@@ -257,11 +262,11 @@ export default function AdminPage() {
                       <td className="max-w-[520px] truncate p-3">{j.source}</td>
                       <td className="p-3 text-right">
                         <button
-                          disabled={busy}
                           onClick={() => deleteJob(j.id)}
+                          disabled={!!deletingJobs[j.id]}
                           className="rounded-lg border border-rose-500/70 px-3 py-1 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
                         >
-                          Delete
+                          {deletingJobs[j.id] ? "Deleting..." : "Delete"}
                         </button>
                       </td>
                     </tr>

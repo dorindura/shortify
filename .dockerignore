@@ -82,3 +82,5 @@ fly.toml
 # Force include cookies and important config
 !cookies.txt
 !tsconfig.runtime.json
+
+supabase/

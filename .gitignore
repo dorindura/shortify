@@ -67,3 +67,5 @@ __pycache__
 
 .idea/
 cookies.txt
+
+supabase/.temp/
