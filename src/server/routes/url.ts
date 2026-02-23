@@ -20,6 +20,14 @@ export async function registerUrlRoute(app: FastifyInstance) {
       return reply.code(400).send({ error: "Missing url" });
     }
 
+    const jobGoalRaw = String(body.jobGoal ?? "shorts");
+    const jobGoal = jobGoalRaw === "summary" ? "summary" : "shorts";
+
+    const summaryTargetSecRaw = Number(body.summaryTargetSec ?? 90);
+    const summaryTargetSec = Number.isFinite(summaryTargetSecRaw)
+      ? Math.max(30, Math.min(300, summaryTargetSecRaw))
+      : 90;
+
     const url = body.url.trim();
     if (!isValidUrl(url)) {
       return reply.code(400).send({ error: "Invalid url" });
@@ -46,7 +54,13 @@ export async function registerUrlRoute(app: FastifyInstance) {
         ? rawStyle
         : "karaoke";
 
-    const limit = await enforceJobLimits(user.id, { clipDurationSec, maxClips, aspect });
+    const limit = await enforceJobLimits(user.id, {
+      clipDurationSec,
+      maxClips,
+      aspect,
+      jobGoal,
+      summaryTargetSec,
+    });
     if (!limit.ok) {
       return reply.code(402).send({ error: limit.reason, upgradeRequired: true });
     }
@@ -66,6 +80,8 @@ export async function registerUrlRoute(app: FastifyInstance) {
       maxClips,
       captionsEnabled,
       captionStyle,
+      jobGoal,
+      summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
       clips: [],
       captionedClips: [],
       captionedThumbs: [],

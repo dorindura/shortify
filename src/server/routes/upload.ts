@@ -33,6 +33,14 @@ export async function registerUploadRoute(app: FastifyInstance) {
         ? aspectField
         : "horizontal";
 
+    const jobGoalField = String(fields?.jobGoal?.value ?? "shorts");
+    const jobGoal = jobGoalField === "summary" ? "summary" : "shorts";
+
+    const summaryTargetSecRaw = Number(fields?.summaryTargetSec?.value ?? 90);
+    const summaryTargetSec = Number.isFinite(summaryTargetSecRaw)
+      ? Math.max(30, Math.min(300, summaryTargetSecRaw))
+      : 90;
+
     const clipDurationSecRaw = Number(fields?.clipDurationSec?.value ?? 30);
     const clipDurationSec =
       Number.isFinite(clipDurationSecRaw) && clipDurationSecRaw > 0 ? clipDurationSecRaw : 30;
@@ -51,7 +59,13 @@ export async function registerUploadRoute(app: FastifyInstance) {
         ? captionStyleField
         : "karaoke";
 
-    const limit = await enforceJobLimits(user.id, { clipDurationSec, maxClips, aspect });
+    const limit = await enforceJobLimits(user.id, {
+      clipDurationSec,
+      maxClips,
+      aspect,
+      jobGoal,
+      summaryTargetSec,
+    });
     if (!limit.ok) {
       return reply.code(402).send({ error: limit.reason, upgradeRequired: true });
     }
@@ -81,6 +95,8 @@ export async function registerUploadRoute(app: FastifyInstance) {
       maxClips,
       captionsEnabled,
       captionStyle,
+      jobGoal,
+      summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
       clips: [],
       captionedClips: [],
       captionedThumbs: [],
