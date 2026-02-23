@@ -3,6 +3,8 @@ import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import OpenAI from "openai";
+import { randomUUID } from "crypto";
+import { spawn } from "child_process";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -256,6 +258,87 @@ function safeAssText(raw: string): string {
   return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/\s+/g, " ").trim();
 }
 
+async function runCmd(cmd: string, args: string[], logPrefix: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    let stderr = "";
+
+    proc.stderr.on("data", (d) => (stderr += d.toString()));
+    proc.on("error", reject);
+
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
+    });
+  });
+}
+
+async function extractTinyAudioForWhisper(videoPath: string): Promise<string> {
+  const AUDIO_DIR = path.join(process.cwd(), "tmp", "audio");
+  await ensureDir(AUDIO_DIR);
+
+  const outPath = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
+
+  // IMPORTANT: mono + 16k + low bitrate => stays under 25MB
+  const args = [
+    "-y",
+    "-i",
+    videoPath,
+    "-map",
+    "0:a:0?",
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    "16000",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "24k", // 👈 safe; poți urca la 32k dacă vrei, dar 24k e cel mai “safe”
+    outPath,
+  ];
+
+  await runCmd("ffmpeg", args, "extractTinyAudioForWhisper");
+  await fsp.access(outPath);
+
+  // Guard: OpenAI limit ~25MB => keep some headroom
+  const stat = await fsp.stat(outPath);
+
+  if (stat.size < 1024) {
+    throw new Error("No audio track or extracted audio too small for Whisper");
+  }
+
+  const MAX_BYTES = 24 * 1024 * 1024;
+
+  if (stat.size > MAX_BYTES) {
+    // Dacă tot e mare, mai încearcă o dată și mai mic
+    const outPath2 = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
+    const args2 = [
+      "-y",
+      "-i",
+      videoPath,
+      "-map",
+      "0:a:0?",
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "16k",
+      outPath2,
+    ];
+    await runCmd("ffmpeg", args2, "extractTinyAudioForWhisper_16k");
+    await fsp.access(outPath2);
+    await fsp.unlink(outPath).catch(() => {});
+    return outPath2;
+  }
+
+  return outPath;
+}
+
 /**
  * Build karaoke text (\k tags) for a small group of words.
  * PREMIUM: "current word pop" using \t transforms on the word's time range.
@@ -380,10 +463,12 @@ export async function transcribeClipToAss(
 ): Promise<string> {
   await ensureDir(SUBS_DIR);
 
+  const audioPath = await extractTinyAudioForWhisper(clipPath);
+
   try {
     const resp = (await openai.audio.transcriptions.create({
       model: "whisper-1",
-      file: fs.createReadStream(clipPath),
+      file: fs.createReadStream(audioPath),
       response_format: "verbose_json",
       timestamp_granularities: ["word", "segment"],
     })) as unknown as WhisperVerboseResponse;
@@ -438,6 +523,8 @@ export async function transcribeClipToAss(
     await fsp.writeFile(outAssPath, buildAssHeader(captionStyle, fontName), "utf8");
     console.log("[transcribeClipToAss] Wrote empty ASS fallback:", outAssPath);
     return outAssPath;
+  } finally {
+    await fsp.unlink(audioPath).catch(() => {});
   }
 }
 

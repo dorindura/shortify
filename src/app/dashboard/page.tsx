@@ -61,6 +61,10 @@ export default function HomePage() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [canDeleteJobs, setCanDeleteJobs] = useState(false);
 
+  type JobGoal = "shorts" | "summary";
+  const [jobGoal, setJobGoal] = useState<JobGoal>("shorts");
+  const [summaryTargetSec, setSummaryTargetSec] = useState<number>(90);
+
   const hasActiveJobs =
     Array.isArray(jobs) && jobs.some((j) => j.status === "pending" || j.status === "processing");
 
@@ -120,6 +124,8 @@ export default function HomePage() {
           maxClips,
           captionsEnabled,
           captionStyle,
+          jobGoal,
+          summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
         }),
       });
 
@@ -156,6 +162,12 @@ export default function HomePage() {
     formData.append("maxClips", String(maxClips));
     formData.append("captionsEnabled", String(captionsEnabled));
     formData.append("captionStyle", captionStyle);
+
+    formData.append("jobGoal", jobGoal);
+
+    if (jobGoal === "summary") {
+      formData.append("summaryTargetSec", String(summaryTargetSec));
+    }
 
     setLoading(true);
     try {
@@ -526,8 +538,96 @@ export default function HomePage() {
               </div>
             </div>
 
+            {/* Job goal */}
+            <div className="mt-4 border-t border-slate-800/80 pt-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-50">Goal</h2>
+                <span className="text-[10px] text-slate-500">
+                  {jobGoal === "summary" ? `Summary ~${summaryTargetSec}s` : "Multiple shorts"}
+                </span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setJobGoal("shorts")}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    jobGoal === "shorts"
+                      ? "border-sky-500 bg-slate-900/80 text-slate-50"
+                      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-500/60"
+                  }`}
+                >
+                  <div className="font-semibold">Shorts</div>
+                  <div className="mt-0.5 text-[11px] text-slate-400">
+                    Generate multiple clips (maxClips) at your chosen duration.
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setJobGoal("summary")}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    jobGoal === "summary"
+                      ? "border-emerald-500 bg-slate-900/80 text-slate-50"
+                      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"
+                  }`}
+                >
+                  <div className="font-semibold">Summary</div>
+                  <div className="mt-0.5 text-[11px] text-slate-400">
+                    One highlight reel around a target length.
+                  </div>
+                </button>
+              </div>
+
+              {/* Summary length controls */}
+              <div className={`mt-4 ${jobGoal !== "summary" ? "hidden" : ""}`}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-slate-200">Summary length</h3>
+                  <span className="text-[10px] text-slate-500">Target: ~{summaryTargetSec}s</span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                  {[45, 60, 90, 120, 180].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setSummaryTargetSec(val)}
+                      className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                        summaryTargetSec === val
+                          ? "bg-emerald-500 text-slate-950 shadow shadow-emerald-500/40"
+                          : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      {val}s
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="range"
+                  min={30}
+                  max={300}
+                  step={5}
+                  value={summaryTargetSec}
+                  onChange={(e) => setSummaryTargetSec(Number(e.target.value))}
+                  className="mt-3 w-full accent-emerald-400"
+                />
+
+                {/* Optional helper for free users if you want */}
+                {!isPro && summaryTargetSec > 60 && (
+                  <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                    Free plan allows summary up to 60s. Choose 60s or upgrade to Pro.
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Clip settings */}
-            <div className="mt-4 grid gap-4 border-t border-slate-800/80 pt-4 md:grid-cols-2">
+            <div
+              className={`mt-4 grid gap-4 border-t border-slate-800/80 pt-4 md:grid-cols-2 ${
+                jobGoal === "summary" ? "pointer-events-none opacity-40" : ""
+              }`}
+            >
               {/* Clip length */}
               <div className="space-y-2 md:border-r md:border-slate-800/80 md:pr-6">
                 <div className="flex items-center justify-between">
@@ -770,6 +870,15 @@ export default function HomePage() {
 
                     {/* Job options */}
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
+                      {job.jobGoal && (
+                        <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
+                          Goal: {job.jobGoal === "summary" ? "Summary" : "Shorts"}
+                          {job.jobGoal === "summary" && job.summaryTargetSec
+                            ? ` (~${job.summaryTargetSec}s)`
+                            : ""}
+                        </span>
+                      )}
+
                       {job.aspect && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
                           <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
@@ -781,12 +890,12 @@ export default function HomePage() {
                           </span>
                         </span>
                       )}
-                      {job.clipDurationSec && (
+                      {job.clipDurationSec && job.jobGoal !== "summary" && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
                           ~{job.clipDurationSec}s clips
                         </span>
                       )}
-                      {job.maxClips && (
+                      {job.maxClips && job.jobGoal !== "summary" && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
                           up to {job.maxClips} clips
                         </span>
