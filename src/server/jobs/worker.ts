@@ -73,10 +73,18 @@ export async function processJob(jobId: string) {
     const extraCleanupPaths: string[] = [];
 
     if (jobGoal === "summary") {
+      const target = summaryTargetSec;
+
+      const desiredHighlights = Math.max(4, Math.min(10, Math.round(target / 10)));
+
+      const segmentLenSec = Math.max(6, Math.min(14, target / desiredHighlights));
+
+      const maxHighlights = Math.max(desiredHighlights + 5, 10);
+
       const ranges = await analyzeTranscriptForSummary(videoInput, {
-        targetSec: summaryTargetSec,
-        segmentLenSec: 8,
-        maxHighlights: 18,
+        targetSec: target,
+        segmentLenSec,
+        maxHighlights,
       });
 
       if (!ranges.length) {
@@ -85,7 +93,7 @@ export async function processJob(jobId: string) {
         usedAICandidates = true;
         await dbUpdateJobStage(jobId, "clipping", 35);
 
-        const PAD = 0.25; // tiny padding
+        const PAD = 0.1; // tiny padding
         const clipRanges = ranges.map((r) => ({
           start: Math.max(0, r.start - PAD),
           end: r.end + PAD,

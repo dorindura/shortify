@@ -557,7 +557,7 @@ export default function HomePage() {
                       : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-500/60"
                   }`}
                 >
-                  <div className="font-semibold">Shorts</div>
+                  <div className="font-semibold">AI Shorts</div>
                   <div className="mt-0.5 text-[11px] text-slate-400">
                     Generate multiple clips (maxClips) at your chosen duration.
                   </div>
@@ -572,7 +572,7 @@ export default function HomePage() {
                       : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"
                   }`}
                 >
-                  <div className="font-semibold">Summary</div>
+                  <div className="font-semibold">AI Story Summary (Pro)</div>
                   <div className="mt-0.5 text-[11px] text-slate-400">
                     One highlight reel around a target length.
                   </div>
