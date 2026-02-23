@@ -635,7 +635,7 @@ export default function HomePage() {
                   <span className="text-[10px] text-slate-500">~{clipDurationSec}s per short</span>
                 </div>
                 <div className="flex flex-wrap justify-center gap-1.5">
-                  {[15, 20, 30, 45, 60].map((val) => (
+                  {[20, 30, 45, 60, 90].map((val) => (
                     <button
                       key={val}
                       type="button"

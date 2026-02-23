@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import { requireUser } from "../auth/requireUser";
 import { listJobsByOwner } from "@lib/jobsRepo";
 import { supabaseAdmin } from "../supabaseAdmin";
-import { requireAdmin } from "@server/auth/requireAdmin";
 import { hasProAccess } from "@server/billing/hasProAccess";
 
 const BUCKET = "shorts";
@@ -12,6 +11,41 @@ export async function isAdminUser(userId: string) {
   const { data, error } = await sb.from("profiles").select("role").eq("id", userId).maybeSingle();
   if (error) return false;
   return data?.role === "admin";
+}
+
+async function removeFolderRecursive(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  bucket: string,
+  prefix: string,
+) {
+  const pathsToRemove: string[] = [];
+  let offset = 0;
+  const limit = 1000;
+
+  while (true) {
+    const { data, error } = await supabase.storage.from(bucket).list(prefix, {
+      limit,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    for (const item of data) {
+      if (item?.name) pathsToRemove.push(`${prefix}${item.name}`);
+    }
+
+    if (data.length < limit) break;
+    offset += limit;
+  }
+
+  if (pathsToRemove.length === 0) return { removed: 0 };
+
+  const { error: removeErr } = await supabase.storage.from(bucket).remove(pathsToRemove);
+  if (removeErr) throw removeErr;
+
+  return { removed: pathsToRemove.length };
 }
 
 export async function registerJobsRoute(app: FastifyInstance) {
@@ -44,20 +78,16 @@ export async function registerJobsRoute(app: FastifyInstance) {
     if (!user) return;
 
     const supabase = supabaseAdmin();
+
     const { data: job, error } = await supabase
       .from("jobs")
-      .select("id,owner_id,deleted_at")
+      .select("id, owner_id, deleted_at")
       .eq("id", jobId)
-      .single();
+      .maybeSingle();
 
     if (error || !job) return reply.code(404).send({ error: "Job not found" });
-    if (job.deleted_at) return reply.send({ ok: true });
 
-    const isAdmin = !!(await requireAdmin(req, {
-      ...reply,
-      send: () => null,
-      code: () => reply,
-    } as any));
+    const isAdmin = await isAdminUser(user.id);
 
     if (!isAdmin) {
       if (job.owner_id !== user.id) return reply.code(403).send({ error: "Forbidden" });
@@ -66,23 +96,29 @@ export async function registerJobsRoute(app: FastifyInstance) {
       if (!isPro) return reply.code(403).send({ error: "Free plan cannot delete jobs" });
     }
 
-    const { data: assets } = await supabase
-      .from("job_assets")
-      .select("bucket,object_path")
-      .eq("job_id", jobId);
-
-    const paths = (assets ?? [])
-      .filter((a) => a.bucket === BUCKET && a.object_path)
-      .map((a) => a.object_path);
-
-    if (paths.length) {
-      await supabase.storage.from(BUCKET).remove(paths);
+    const folderPrefix = `jobs/${jobId}/`;
+    try {
+      const result = await removeFolderRecursive(supabase, BUCKET, folderPrefix);
+      req.log?.info({ jobId, bucket: BUCKET, folderPrefix, ...result }, "Deleted storage objects");
+    } catch (err) {
+      req.log?.error(
+        { err, jobId, bucket: BUCKET, folderPrefix },
+        "Failed to remove storage folder contents",
+      );
+      return reply.code(500).send({ error: "Failed to remove job files" });
     }
 
-    await supabase
-      .from("jobs")
-      .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", jobId);
+    const { error: delAssetsErr } = await supabase.from("job_assets").delete().eq("job_id", jobId);
+    if (delAssetsErr) {
+      req.log?.error({ delAssetsErr, jobId }, "Failed to delete job_assets rows");
+      return reply.code(500).send({ error: "Failed to delete job assets rows" });
+    }
+
+    const { error: delJobErr } = await supabase.from("jobs").delete().eq("id", jobId);
+    if (delJobErr) {
+      req.log?.error({ delJobErr, jobId }, "Failed to delete job row");
+      return reply.code(500).send({ error: "Failed to delete job" });
+    }
 
     return reply.send({ ok: true });
   });
