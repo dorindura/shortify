@@ -362,27 +362,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function buildFixedWindow(
-  centerSeg: WhisperSegment,
-  duration: number,
-  windowSec: number,
-): { start: number; end: number } {
-  const center = (centerSeg.start + centerSeg.end) / 2;
-  let start = center - windowSec / 2;
-  let end = center + windowSec / 2;
-
-  if (start < 0) {
-    end -= start;
-    start = 0;
-  }
-  if (end > duration) {
-    const overflow = end - duration;
-    start = Math.max(0, start - overflow);
-    end = duration;
-  }
-  return { start, end };
-}
-
 export async function analyzeTranscriptForSummary(
   videoPath: string,
   opts: SummaryOptions = {},
@@ -414,11 +393,25 @@ export async function analyzeTranscriptForSummary(
   for (const { seg, score } of scored) {
     if (picked.length >= maxHighlights) break;
 
-    const w = buildFixedWindow(seg, duration, segmentLenSec);
+    const w = buildWindowAroundSegment(
+      seg,
+      segments,
+      duration,
+      Math.max(5, segmentLenSec - 2),
+      segmentLenSec + 2,
+      segmentLenSec,
+    );
 
-    // avoid heavy overlaps
-    const overlaps = picked.some((p) => intersectionOverUnion(p, w) > 0.35);
-    if (overlaps) continue;
+    const MIN_GAP = Math.max(1.0, Math.min(2.0, segmentLenSec * 0.12));
+
+    const tooClose = picked.some((p) => {
+      const distance = w.end < p.start ? p.start - w.end : p.end < w.start ? w.start - p.end : 0;
+
+      const overlaps = intersectionOverUnion(p, w) > 0.3;
+      return overlaps || distance < MIN_GAP;
+    });
+
+    if (tooClose) continue;
 
     picked.push({
       start: w.start,
