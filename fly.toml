@@ -7,8 +7,19 @@ dockerfile = 'Dockerfile'
 [env]
 NODE_ENV = 'production'
 PORT = '8080'
+# Queue tuning (defaults are safe)
+WORKER_CONCURRENCY = '1'
+FFMPEG_THREADS = '1'
+# You must set REDIS_URL via `fly secrets set REDIS_URL=...`
 
+# Two processes: api (http server) and worker (queue consumer)
+[processes]
+api = "node -r tsconfig-paths/register dist-server/server/index.js"
+worker = "node -r tsconfig-paths/register dist-server/server/jobs/workerRunner.js"
+
+# Expose HTTP only for api process group
 [[services]]
+processes = ["api"]
 protocol = 'tcp'
 internal_port = 8080
 auto_stop_machines = true
@@ -27,6 +38,7 @@ handlers = ['tls', 'http']
 interval = '15s'
 timeout = '2s'
 
+# Default VM sizing for the app (applies to all process groups unless you override by scaling)
 [[vm]]
 cpu_kind = "performance"
 cpus = 1

@@ -1,19 +1,33 @@
 // src/server/jobs/queue.ts
-import type { Job } from "@lib/jobsStore";
-import { updateJobStatus } from "@lib/jobsStore";
-import { processJob } from "@server/jobs/worker";
+import type { Job as AppJob } from "@lib/jobsStore";
+import { Queue } from "bullmq";
+import IORedis from "ioredis";
 
-/**
- * In the future this will add the job to a real queue (BullMQ, etc.).
- * For now it immediately starts processing the job.
- */
-export async function enqueueJob(job: Job) {
-    console.log("[enqueueJob] Job enqueued:", job.id);
-    // Mark as pending for now
-    updateJobStatus(job.id, "pending");
+// One Redis connection for the Queue
+const connection = new IORedis(process.env.REDIS_URL!, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
 
-    // Immediately process in background (no real queue yet)
-    processJob(job.id).catch((err) => {
-        console.error("[enqueueJob] Error processing job:", err);
-    });
+export const jobsQueue = new Queue("jobs", {
+  connection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: "exponential", delay: 10_000 },
+    removeOnComplete: { count: 2000 },
+    removeOnFail: { count: 5000 },
+  },
+});
+
+export async function enqueueJob(job: AppJob) {
+  console.log("[enqueueJob] Enqueue:", job.id);
+
+  // enqueue *only* the jobId (small payload, stable, idempotent)
+  await jobsQueue.add(
+    "process",
+    { jobId: job.id },
+    { jobId: job.id }, // dedupe: same job won't be enqueued twice
+  );
+
+  return job.id;
 }
