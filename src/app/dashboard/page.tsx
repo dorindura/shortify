@@ -61,6 +61,9 @@ export default function HomePage() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [canDeleteJobs, setCanDeleteJobs] = useState(false);
 
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+
   type JobGoal = "shorts" | "summary";
   const [jobGoal, setJobGoal] = useState<JobGoal>("shorts");
   const [summaryTargetSec, setSummaryTargetSec] = useState<number>(90);
@@ -201,7 +204,9 @@ export default function HomePage() {
   async function handleManageBilling() {
     setLoading(true);
     try {
-      const res = await authedJsonFetch(`/api/stripe/portal`, { method: "POST" });
+      const res = await authedJsonFetch(`/api/stripe/portal`, {
+        method: "POST",
+      });
       const data = await res.json();
       if (data?.url) window.location.href = data.url;
     } finally {
@@ -214,7 +219,9 @@ export default function HomePage() {
   async function deleteJob(jobId: string) {
     setDeletingJobs((prev) => ({ ...prev, [jobId]: true }));
     try {
-      const res = await authedJsonFetch(`${API}/api/jobs/${jobId}`, { method: "DELETE" });
+      const res = await authedJsonFetch(`${API}/api/jobs/${jobId}`, {
+        method: "DELETE",
+      });
 
       if (res.ok) {
         await fetchJobs();
@@ -232,28 +239,50 @@ export default function HomePage() {
     }
   }
 
-  async function downloadWithAuth(fileUrl: string, filename: string) {
-    const res = await authedFormFetch(
-      `${API}/api/download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(filename)}`,
-    );
+  async function downloadWithAuth(fileUrl: string, filename: string, key: string) {
+    if (isDownloading) return;
 
-    if (!res.ok) {
+    setIsDownloading(true);
+    setDownloadingKey(key);
+
+    try {
+      const res = await authedFormFetch(
+        `${API}/api/download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(
+          filename,
+        )}`,
+      );
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        alert(msg || "Download failed");
+        return;
+      }
+
+      const blob = await res.blob();
+
+      const objectUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (err) {
+      console.error("downloadWithAuth error:", err);
       alert("Download failed");
-      return;
+    } finally {
+      setIsDownloading(false);
+      setDownloadingKey(null);
     }
-
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
   }
 
   async function startCheckout() {
-    const res = await authedJsonFetch(`/api/stripe/checkout`, { method: "POST" });
+    const res = await authedJsonFetch(`/api/stripe/checkout`, {
+      method: "POST",
+    });
     const data = await res.json();
     if (data?.url) window.location.href = data.url;
   }
@@ -949,6 +978,10 @@ export default function HomePage() {
                           {job.captionedClips.map((url, idx) => {
                             const thumb = job.captionedThumbs?.[idx];
                             const title = `Short ${idx + 1}`;
+
+                            const key = `${job.id}:${idx}`;
+                            const isThisDownloading = isDownloading && downloadingKey === key;
+
                             return (
                               <div
                                 key={url}
@@ -973,10 +1006,13 @@ export default function HomePage() {
                                   <div className="font-medium text-slate-100">{title}</div>
                                   <div className="mt-1 flex flex-wrap gap-2">
                                     <button
-                                      onClick={() => downloadWithAuth(url, `short-${idx + 1}.mp4`)}
-                                      className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110"
+                                      onClick={() =>
+                                        downloadWithAuth(url, `short-${idx + 1}.mp4`, key)
+                                      }
+                                      disabled={isDownloading}
+                                      className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
-                                      Download
+                                      {isThisDownloading ? "Downloading..." : "Download"}
                                     </button>
                                     <a
                                       href={url}
