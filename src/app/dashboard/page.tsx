@@ -108,7 +108,7 @@ export default function HomePage() {
 
     const intervalId = setInterval(() => {
       fetchJobs();
-    }, 3000);
+    }, 15000);
 
     return () => clearInterval(intervalId);
   }, [hasActiveJobs]);
