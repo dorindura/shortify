@@ -65,6 +65,8 @@ async function extractCompressedAudio(videoPath: string): Promise<string> {
     "-y",
     "-i",
     videoPath,
+    "-map",
+    "0:a:0?",
     "-vn",
     "-acodec",
     "libmp3lame",
@@ -73,7 +75,7 @@ async function extractCompressedAudio(videoPath: string): Promise<string> {
     "-ar",
     "16000",
     "-b:a",
-    "64k",
+    "24k",
     outPath,
   ];
 
@@ -106,20 +108,18 @@ async function transcribeVideoWithSegments(
       timestamp_granularities: ["segment"],
     })) as unknown as WhisperVerboseResponse;
 
-    const segments =
-      (resp.segments ?? []).map((seg, idx) => ({
-        id: seg.id ?? idx,
-        start: seg.start,
-        end: seg.end,
-        text: (seg.text ?? "").trim(),
-      })) ?? [];
+    const segments = (resp.segments ?? []).map((seg, idx) => ({
+      id: seg.id ?? idx,
+      start: seg.start,
+      end: seg.end,
+      text: (seg.text ?? "").trim(),
+    })) ?? [];
 
-    const duration: number =
-      typeof resp.duration === "number"
-        ? resp.duration
-        : segments.length > 0
-          ? segments[segments.length - 1].end
-          : 0;
+    const duration: number = typeof resp.duration === "number"
+      ? resp.duration
+      : segments.length > 0
+      ? segments[segments.length - 1].end
+      : 0;
 
     return { segments, duration };
   } finally {
@@ -307,7 +307,9 @@ export async function analyzeTranscriptForClips(
   const { segments, duration } = await transcribeVideoWithSegments(videoPath);
 
   if (!segments.length || duration <= 0) {
-    console.warn("[analyzeTranscriptForClips] No segments or invalid duration.");
+    console.warn(
+      "[analyzeTranscriptForClips] No segments or invalid duration.",
+    );
     return [];
   }
 
@@ -335,7 +337,9 @@ export async function analyzeTranscriptForClips(
     );
 
     // De-duplicate: skip if overlaps too much with an existing candidate
-    const overlaps = candidates.some((c) => intersectionOverUnion(c, window) > 0.4);
+    const overlaps = candidates.some((c) =>
+      intersectionOverUnion(c, window) > 0.4
+    );
     if (overlaps) continue;
 
     candidates.push({
@@ -356,7 +360,12 @@ export type SummaryOptions = {
   maxHighlights?: number; // cap highlights
 };
 
-export type SummaryRange = { start: number; end: number; score: number; reason: string };
+export type SummaryRange = {
+  start: number;
+  end: number;
+  score: number;
+  reason: string;
+};
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -376,7 +385,9 @@ export async function analyzeTranscriptForSummary(
   const { segments, duration } = await transcribeVideoWithSegments(videoPath);
 
   if (!segments.length || duration <= 0) {
-    console.warn("[analyzeTranscriptForSummary] No segments or invalid duration.");
+    console.warn(
+      "[analyzeTranscriptForSummary] No segments or invalid duration.",
+    );
     return [];
   }
 
@@ -405,7 +416,11 @@ export async function analyzeTranscriptForSummary(
     const MIN_GAP = Math.max(1.0, Math.min(2.0, segmentLenSec * 0.12));
 
     const tooClose = picked.some((p) => {
-      const distance = w.end < p.start ? p.start - w.end : p.end < w.start ? w.start - p.end : 0;
+      const distance = w.end < p.start
+        ? p.start - w.end
+        : p.end < w.start
+        ? w.start - p.end
+        : 0;
 
       const overlaps = intersectionOverUnion(p, w) > 0.3;
       return overlaps || distance < MIN_GAP;

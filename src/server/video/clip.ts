@@ -14,7 +14,11 @@ async function ensureDir(dir: string) {
   }
 }
 
-function runCmd(cmd: string, args: string[], logPrefix: string): Promise<string> {
+function runCmd(
+  cmd: string,
+  args: string[],
+  logPrefix: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     console.log(`[${logPrefix}] Running ${cmd} ${args.join(" ")}`);
     const proc = spawn(cmd, args);
@@ -68,7 +72,15 @@ type LoudSegment = {
  */
 async function analyzeLoudSegments(videoPath: string): Promise<LoudSegment[]> {
   // tweak noise/d as needed
-  const args = ["-i", videoPath, "-af", "silencedetect=noise=-35dB:d=0.5", "-f", "null", "-"];
+  const args = [
+    "-i",
+    videoPath,
+    "-af",
+    "silencedetect=noise=-35dB:d=0.5",
+    "-f",
+    "null",
+    "-",
+  ];
 
   const log = await runCmd("ffmpeg", args, "silencedetect");
 
@@ -234,18 +246,10 @@ export async function createClipsFromVideoUsingRanges(
       videoPath,
       "-t",
       String(duration),
-
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "20",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-
+      "-c",
+      "copy",
+      "-avoid_negative_ts",
+      "make_zero",
       "-movflags",
       "+faststart",
       outPath,
@@ -308,7 +312,10 @@ export async function createClipsFromVideo(
 
     return outputs;
   } catch (err) {
-    console.error("[createClipsFromVideo] Error in smart clipping, fallback:", err);
+    console.error(
+      "[createClipsFromVideo] Error in smart clipping, fallback:",
+      err,
+    );
     return await createNaiveClips(videoPath, clipDurationSec, maxClips);
   }
 }
@@ -349,7 +356,9 @@ async function createNaiveClips(
   return outputs;
 }
 
-export async function concatClipsToSingleVideo(clips: string[]): Promise<string> {
+export async function concatClipsToSingleVideo(
+  clips: string[],
+): Promise<string> {
   await ensureDir(CLIPS_DIR);
 
   if (!clips.length) throw new Error("No clips to concat");
@@ -359,7 +368,9 @@ export async function concatClipsToSingleVideo(clips: string[]): Promise<string>
 
   // ffmpeg concat demuxer needs a file list
   const listPath = path.join(CLIPS_DIR, `${id}-concat.txt`);
-  const fileList = clips.map((p) => `file '${path.resolve(p).replace(/'/g, "'\\''")}'`).join("\n");
+  const fileList = clips.map((p) =>
+    `file '${path.resolve(p).replace(/'/g, "'\\''")}'`
+  ).join("\n");
 
   await fsp.writeFile(listPath, fileList, "utf8");
 
