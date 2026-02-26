@@ -8,6 +8,7 @@ export type JobStage =
   | "queued"
   | "downloading"
   | "captioning"
+  | "scoring"
   | "clipping"
   | "rendering"
   | "finished";
@@ -81,7 +82,11 @@ export function setJobCaptionedClips(id: string, urls: string[]) {
   }
 }
 
-export function setJobCaptionedResults(id: string, clipUrls: string[], thumbUrls: string[]) {
+export function setJobCaptionedResults(
+  id: string,
+  clipUrls: string[],
+  thumbUrls: string[],
+) {
   const job = jobs.find((j) => j.id === id);
   if (job) {
     job.captionedClips = clipUrls;
