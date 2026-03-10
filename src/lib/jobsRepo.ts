@@ -20,6 +20,8 @@ export async function createJob(job: Job, sb: SupabaseClient) {
     captioned_thumbs: job.captionedThumbs,
     job_goal: job.jobGoal ?? "shorts",
     summary_target_sec: job.summaryTargetSec ?? null,
+    quote_prompt: job.quotePrompt ?? null,
+    quote_reel_meta: job.quoteReelMeta ?? null,
     created_at: job.createdAt,
     updated_at: job.updatedAt,
   });
@@ -57,5 +59,7 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
     updatedAt: row.updated_at,
     jobGoal: row.job_goal ?? "shorts",
     summaryTargetSec: row.summary_target_sec ?? undefined,
+    quotePrompt: row.quote_prompt ?? undefined,
+    quoteReelMeta: row.quote_reel_meta ?? undefined,
   }));
 }

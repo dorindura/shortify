@@ -18,6 +18,7 @@ async function main() {
   const { registerJobsRoute } = await import("./routes/jobs");
   const { registerDownloadRoute } = await import("./routes/download");
   const { registerAdminRoutes } = await import("./routes/admin");
+  const { registerQuoteReelRoute } = await import("./routes/quoteReel");
 
   const app = Fastify({
     logger: true,
@@ -33,7 +34,9 @@ async function main() {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
       if (origin.includes("localhost")) return cb(null, true);
-      if (allowed.length === 0 || allowed.includes(origin)) return cb(null, true);
+      if (allowed.length === 0 || allowed.includes(origin)) {
+        return cb(null, true);
+      }
       return cb(new Error("CORS blocked"), false);
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -51,6 +54,7 @@ async function main() {
   await registerJobsRoute(app);
   await registerDownloadRoute(app);
   await registerAdminRoutes(app);
+  await registerQuoteReelRoute(app);
 
   const port = Number(process.env.PORT ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });

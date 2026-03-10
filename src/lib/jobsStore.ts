@@ -1,40 +1,70 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
-export type JobType = "upload" | "url";
+export type JobType = "upload" | "url" | "quote_reel";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
 export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 
 export type JobStage =
   | "queued"
+  | "planning"
   | "downloading"
   | "captioning"
   | "scoring"
   | "clipping"
   | "rendering"
+  | "uploading"
   | "finished";
 
-export type JobGoal = "shorts" | "summary";
+export type JobGoal = "shorts" | "summary" | "quote_reel";
+
+export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark";
+
+export type QuoteReelMeta = {
+  quote?: string;
+  author?: string;
+  instagramCaption?: string;
+  hashtags?: string[];
+  primaryFolder?: string;
+  fallbackFolder?: string;
+  selectedImages?: string[];
+  overlayHandle?: string;
+  tone?: QuoteReelTone;
+  durationSec?: number;
+  recommendedDurationSec?: number;
+  recommendedImageCount?: number;
+  musicSuggestion?: {
+    label: string;
+    searchQuery: string;
+    reason?: string;
+  };
+};
 
 export type Job = {
   id: string;
   ownerId: string;
   type: JobType;
-  source: string; // original file path or URL
+  source: string;
   status: JobStatus;
   createdAt: string;
   updatedAt: string;
   aspect?: JobAspect;
-  clipDurationSec?: number; // e.g. 20, 30, 45
+  clipDurationSec?: number;
   maxClips?: number;
   captionsEnabled?: boolean;
   captionStyle?: CaptionStyle;
-  clips?: string[]; // filesystem paths to raw clips
-  captionedClips?: string[]; // PUBLIC URLs to captioned shorts (e.g. /shorts/abc.mp4)
+
+  clips?: string[];
+  captionedClips?: string[];
   captionedThumbs?: string[];
   stage?: JobStage;
-  progress?: number; // 0–100
-  jobGoal?: JobGoal; // NEW
-  summaryTargetSec?: number; // NEW
+  progress?: number;
+
+  jobGoal?: JobGoal;
+  summaryTargetSec?: number;
+
+  // NEW
+  quotePrompt?: string;
+  quoteReelMeta?: QuoteReelMeta;
 };
 
 const jobs: Job[] = [];
