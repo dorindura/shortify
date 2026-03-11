@@ -22,7 +22,7 @@ export type QuoteReelAiPlan = {
   hashtags: string[];
   primaryFolder: string;
   fallbackFolder: string;
-  musicSuggestions: {
+  musicSuggestion: {
     label: string;
     searchQuery: string;
     reason: string;
@@ -94,7 +94,7 @@ Return JSON:
   "hashtags": [],
   "primaryFolder": "",
   "fallbackFolder": "",
-  "musicSuggestions": [
+  "musicSuggestion": [
     {
       "label": "",
       "searchQuery": "",
@@ -125,6 +125,6 @@ Return JSON:
     hashtags: parsed.hashtags ?? [],
     primaryFolder: folder,
     fallbackFolder: fallbackFolder,
-    musicSuggestions: parsed.musicSuggestions ?? [],
+    musicSuggestion: parsed.musicSuggestion ?? [],
   };
 }
