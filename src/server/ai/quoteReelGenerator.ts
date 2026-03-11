@@ -93,6 +93,7 @@ Return JSON:
   "instagramCaption": "",
   "hashtags": [],
   "primaryFolder": "",
+  "fallbackFolder": "",
   "musicSuggestions": [
     {
       "label": "",
@@ -115,6 +116,7 @@ Return JSON:
   const parsed = JSON.parse(content);
 
   const folder = isValidFolder(parsed.primaryFolder) ? parsed.primaryFolder : "stoic"; // fallback safe
+  const fallbackFolder = isValidFolder(parsed.fallbackFolder) ? parsed.fallbackFolder : "stoic";
 
   return {
     quote: parsed.quote,
@@ -122,6 +124,7 @@ Return JSON:
     instagramCaption: parsed.instagramCaption,
     hashtags: parsed.hashtags ?? [],
     primaryFolder: folder,
+    fallbackFolder: fallbackFolder,
     musicSuggestions: parsed.musicSuggestions ?? [],
   };
 }
