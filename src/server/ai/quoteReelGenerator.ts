@@ -21,6 +21,7 @@ export type QuoteReelAiPlan = {
   instagramCaption: string;
   hashtags: string[];
   primaryFolder: string;
+  fallbackFolder: string;
   musicSuggestions: {
     label: string;
     searchQuery: string;
