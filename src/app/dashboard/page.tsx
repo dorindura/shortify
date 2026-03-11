@@ -1160,29 +1160,29 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {job.quoteReelMeta?.musicSuggestion && (
-                      <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">
-                        <div className="text-[10px] font-semibold text-slate-300">
-                          Sound suggestion
-                        </div>
+                    {/*{job.quoteReelMeta?.musicSuggestion && (*/}
+                    {/*  <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">*/}
+                    {/*    <div className="text-[10px] font-semibold text-slate-300">*/}
+                    {/*      Sound suggestion*/}
+                    {/*    </div>*/}
 
-                        <div className="mt-1 text-[10px] text-slate-200">
-                          {job.quoteReelMeta.musicSuggestion.title}
-                        </div>
+                    {/*    <div className="mt-1 text-[10px] text-slate-200">*/}
+                    {/*      {job.quoteReelMeta?.musicSuggestion?.title}*/}
+                    {/*    </div>*/}
 
-                        {job.quoteReelMeta.musicSuggestion.searchQuery && (
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            Search: {job.quoteReelMeta.musicSuggestion.searchQuery}
-                          </div>
-                        )}
+                    {/*    {job.quoteReelMeta.musicSuggestion.searchQuery && (*/}
+                    {/*      <div className="mt-1 text-[10px] text-slate-500">*/}
+                    {/*        Search: {job.quoteReelMeta.musicSuggestion.searchQuery}*/}
+                    {/*      </div>*/}
+                    {/*    )}*/}
 
-                        {job.quoteReelMeta.musicSuggestion.reason && (
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            {job.quoteReelMeta.musicSuggestion.reason}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/*    {job.quoteReelMeta.musicSuggestion.reason && (*/}
+                    {/*      <div className="mt-1 text-[10px] text-slate-500">*/}
+                    {/*        {job.quoteReelMeta.musicSuggestion.reason}*/}
+                    {/*      </div>*/}
+                    {/*    )}*/}
+                    {/*  </div>*/}
+                    {/*)}*/}
 
                     {/* Stage + progress */}
                     {job.stage && (
