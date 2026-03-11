@@ -69,7 +69,7 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       tone,
-      overlayHandle,
+      overlayHandle: overlayHandle,
       quote: plan.quote,
       author: plan.author,
       instagramCaption: plan.instagramCaption,
@@ -100,7 +100,7 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       tone,
-      overlayHandle,
+      overlayHandle: overlayHandle,
       quote: plan.quote,
       author: plan.author,
       instagramCaption: plan.instagramCaption,
@@ -120,7 +120,7 @@ export async function processQuoteReelJob(jobId: string) {
       secondsPerImage: SECONDS_PER_IMAGE,
       quote: plan.quote,
       author: plan.author,
-      overlayHandle,
+      overlayHandle: overlayHandle,
     });
 
     cleanupPaths.push(videoPath, thumbPath);
