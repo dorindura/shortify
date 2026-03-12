@@ -83,12 +83,7 @@ export async function processQuoteReelJob(jobId: string) {
 
     await dbUpdateJobStage(jobId, "clipping", 35);
 
-    let availableImages = await listImagesFromFolders([plan.primaryFolder]);
-
-    if (availableImages.length < uniqueImageCount && plan.fallbackFolder) {
-      const fallbackImages = await listImagesFromFolders([plan.fallbackFolder]);
-      availableImages = [...availableImages, ...fallbackImages];
-    }
+    const availableImages = await listImagesFromFolders([plan.primaryFolder]);
 
     const selectedUniqueImages = pickRandomImages({
       images: availableImages,

@@ -11,7 +11,6 @@ export const QUOTE_REEL_FOLDERS = [
   "luxury_success",
   "nostalgic",
   "stoic",
-  "surreal_art",
   "urban_lonely",
 ] as const;
 
@@ -51,16 +50,18 @@ export async function generateQuoteReelPlan(input: {
 Create a viral motivational reel plan.
 
 Rules:
-
-Use REAL famous quotes only.
-Do not invent quotes.
-Do not invent authors.
+- Use REAL famous quotes only.
+- Do not invent quotes.
+- Do not invent authors.
+- Avoid the most overused quotes when possible.
+- If the user mentions an author, prefer less repeated but still authentic quotes from that author.
+- Never return a quote that appears in the provided bannedQuotes list.
+- Do not reuse common top-1/top-2 quotes if another valid quote exists.
 
 Quote length:
-8–26 words.
+8–38 words.
 
 Choose ONE visual style folder from this list ONLY:
-
 ${folderList}
 
 Do not invent new folder names.
@@ -68,12 +69,11 @@ Do not invent new folder names.
 Return 3 realistic sound suggestions creators search on TikTok.
 
 Examples:
-
-Little Dark Age slowed edit
-Interstellar piano edit
-Lux Aeterna cinematic edit
-dramatic motivational speech
-dark ambient phonk edit
+- Little Dark Age slowed edit
+- Interstellar piano edit
+- Lux Aeterna cinematic edit
+- dramatic motivational speech
+- dark ambient phonk edit
 
 Return JSON only.
 `,
