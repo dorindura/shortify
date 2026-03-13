@@ -48,8 +48,11 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
         : "karaoke";
 
     const limit = await enforceJobLimits(user.id, {
+      clipDurationSec: durationSec,
+      maxClips: 1,
       aspect: "vertical",
       jobGoal: "quote_reel",
+      summaryTargetSec: durationSec,
     });
 
     if (!limit.ok) {
