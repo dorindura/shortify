@@ -71,7 +71,7 @@ export default function HomePage() {
 
   const [quotePrompt, setQuotePrompt] = useState("");
   const [quoteTone, setQuoteTone] = useState<QuoteTone>("cinematic");
-  const [overlayHandle, setOverlayHandle] = useState("");
+  // const [overlayHandle, setOverlayHandle] = useState("");
 
   const isQuoteReel = jobGoal === "quote_reel";
 
@@ -133,7 +133,7 @@ export default function HomePage() {
         body: JSON.stringify({
           prompt: quotePrompt,
           tone: quoteTone,
-          overlayHandle,
+          // overlayHandle,
           captionsEnabled,
           captionStyle,
         }),
@@ -852,17 +852,17 @@ export default function HomePage() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-medium text-slate-300">
-                      Edited by handle
-                    </label>
-                    <input
-                      value={overlayHandle}
-                      onChange={(e) => setOverlayHandle(e.target.value)}
-                      placeholder="@duradorin"
-                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20"
-                    />
-                  </div>
+                  {/*<div>*/}
+                  {/*  <label className="text-[11px] font-medium text-slate-300">*/}
+                  {/*    Edited by handle*/}
+                  {/*  </label>*/}
+                  {/*  <input*/}
+                  {/*    value={overlayHandle}*/}
+                  {/*    onChange={(e) => setOverlayHandle(e.target.value)}*/}
+                  {/*    placeholder="@duradorin"*/}
+                  {/*    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20"*/}
+                  {/*  />*/}
+                  {/*</div>*/}
                 </div>
 
                 <button

@@ -27,7 +27,7 @@ export type QuoteReelMeta = {
   primaryFolder?: string;
   fallbackFolder?: string;
   selectedImages?: string[];
-  overlayHandle?: string;
+  // overlayHandle?: string;
   tone?: QuoteReelTone;
   durationSec?: number;
   recommendedDurationSec?: number;

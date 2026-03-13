@@ -14,7 +14,7 @@ import { renderQuoteReelFromImages } from "@/server/video/quoteReelRender";
 
 type RawQuoteReelMeta = {
   tone?: "aggressive" | "cinematic" | "calm" | "dark";
-  overlayHandle?: string;
+  // overlayHandle?: string;
   quote?: string;
   author?: string;
   instagramCaption?: string;
@@ -55,7 +55,7 @@ export async function processQuoteReelJob(jobId: string) {
 
     const prompt = job.quote_prompt?.trim() || "discipline and success";
     const tone = existingMeta.tone ?? "cinematic";
-    const overlayHandle = existingMeta.overlayHandle?.trim() ?? "";
+    // const overlayHandle = existingMeta.overlayHandle?.trim() ?? "";
 
     const plan = await generateQuoteReelPlan({
       prompt,
@@ -69,7 +69,7 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       tone,
-      overlayHandle: overlayHandle,
+      // overlayHandle: overlayHandle,
       quote: plan.quote,
       author: plan.author,
       instagramCaption: plan.instagramCaption,
@@ -95,7 +95,7 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       tone,
-      overlayHandle: overlayHandle,
+      // overlayHandle: overlayHandle,
       quote: plan.quote,
       author: plan.author,
       instagramCaption: plan.instagramCaption,
@@ -115,7 +115,7 @@ export async function processQuoteReelJob(jobId: string) {
       secondsPerImage: SECONDS_PER_IMAGE,
       quote: plan.quote,
       author: plan.author,
-      overlayHandle: overlayHandle,
+      // overlayHandle: overlayHandle,
     });
 
     cleanupPaths.push(videoPath, thumbPath);
