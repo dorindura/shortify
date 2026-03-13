@@ -37,7 +37,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
       ? Math.max(15, Math.min(60, durationSecRaw))
       : 30;
 
-    const overlayHandle = typeof body.overlayHandle === "string" ? body.overlayHandle.trim() : "";
+    // const overlayHandle = typeof body.overlayHandle === "string" ? body.overlayHandle.trim() : "";
 
     const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
 
@@ -88,7 +88,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
       quoteReelMeta: {
         tone,
         durationSec,
-        overlayHandle,
+        // overlayHandle,
       },
     };
 
