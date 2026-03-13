@@ -10,6 +10,7 @@ RUN npm run build:server
 # ---------- runtime stage ----------
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+
 ENV NODE_ENV=production
 ENV LIBGL_ALWAYS_SOFTWARE=1
 ENV GALLIUM_DRIVER=llvmpipe
@@ -52,12 +53,20 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY cookies.txt ./cookies.txt
-
+COPY public ./public
 COPY --from=build /app/dist-server ./dist-server
 COPY tsconfig.runtime.json ./tsconfig.runtime.json
+
 ENV TS_NODE_PROJECT=tsconfig.runtime.json
 
-RUN mkdir -p /app/uploads/remote /app/uploads/clips /app/tmp/audio /app/tmp/subs
+RUN mkdir -p \
+  /app/uploads/remote \
+  /app/uploads/clips \
+  /app/tmp/audio \
+  /app/tmp/subs \
+  /app/public/shorts \
+  /app/public/thumbs \
+  /app/public/assets
 
 EXPOSE 8080
 CMD ["node", "-r", "tsconfig-paths/register", "dist-server/server/index.js"]

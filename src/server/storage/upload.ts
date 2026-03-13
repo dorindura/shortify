@@ -12,37 +12,30 @@ export type UploadedAsset = {
   bucket: string;
 };
 
-// function toFsPath(p: string) {
-//   if (path.isAbsolute(p)) return p;
-//   if (p.startsWith("/")) return path.join(process.cwd(), "public", p.slice(1));
-//   if (p.startsWith("shorts/")) return path.join(process.cwd(), "public", p);
-//   return p;
-// }
-
-// function toFsPath(p: string) {
-//   if (p.startsWith("/")) return path.join(process.cwd(), "public", p);
-//   if (p.startsWith("shorts/")) return path.join(process.cwd(), "public", p);
-//   return p;
-// }
-
 function toFsPath(p: string) {
-  // dacă este deja path absolut (tmp etc)
-  if (path.isAbsolute(p)) {
-    return p;
+  const normalized = p.replace(/\\/g, "/");
+
+  if (
+    normalized.startsWith("/shorts/") ||
+    normalized.startsWith("/thumbs/") ||
+    normalized.startsWith("/assets/")
+  ) {
+    return path.join(process.cwd(), "public", normalized.slice(1));
   }
 
-  // dacă începe cu /assets sau /shorts etc
-  if (p.startsWith("/")) {
-    return path.join(process.cwd(), "public", p.slice(1));
+  if (
+    normalized.startsWith("shorts/") ||
+    normalized.startsWith("thumbs/") ||
+    normalized.startsWith("assets/")
+  ) {
+    return path.join(process.cwd(), "public", normalized);
   }
 
-  // dacă este relativ din public
-  if (p.startsWith("shorts/") || p.startsWith("assets/")) {
-    return path.join(process.cwd(), "public", p);
+  if (path.isAbsolute(normalized)) {
+    return normalized;
   }
 
-  // altfel presupunem că este deja relativ corect
-  return path.join(process.cwd(), p);
+  return path.join(process.cwd(), normalized);
 }
 
 export async function uploadLocalFileToStorage(
