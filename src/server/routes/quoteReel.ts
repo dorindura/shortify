@@ -50,7 +50,6 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
     const limit = await enforceJobLimits(user.id, {
       aspect: "vertical",
       jobGoal: "quote_reel",
-      quoteDurationSec: durationSec,
     });
 
     if (!limit.ok) {
