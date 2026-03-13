@@ -26,6 +26,7 @@ import { analyzeFaceCropsForClips, EnergyFrame } from "@server/video/faceCrop";
 import { extractAudioForWhisper } from "@server/video/audio";
 import { analyzeAudioEnergyForClip } from "@server/video/audioEnergy";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
+import { processQuoteReelJob } from "@server/jobs/processQuoteReelJob";
 
 type SubtitleFile = string | { path: string };
 
@@ -37,6 +38,11 @@ export async function processJob(jobId: string) {
   const job = await dbGetJob(jobId);
   if (!job) {
     console.warn(`[processJob] Job not found: ${jobId}`);
+    return;
+  }
+
+  if (job.job_goal === "quote_reel") {
+    await processQuoteReelJob(jobId);
     return;
   }
 

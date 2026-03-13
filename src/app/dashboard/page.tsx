@@ -64,9 +64,16 @@ export default function HomePage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
 
-  type JobGoal = "shorts" | "summary";
+  type JobGoal = "shorts" | "summary" | "quote_reel";
+  type QuoteTone = "aggressive" | "cinematic" | "calm" | "dark";
   const [jobGoal, setJobGoal] = useState<JobGoal>("shorts");
   const [summaryTargetSec, setSummaryTargetSec] = useState<number>(90);
+
+  const [quotePrompt, setQuotePrompt] = useState("");
+  const [quoteTone, setQuoteTone] = useState<QuoteTone>("cinematic");
+  // const [overlayHandle, setOverlayHandle] = useState("");
+
+  const isQuoteReel = jobGoal === "quote_reel";
 
   const hasActiveJobs =
     Array.isArray(jobs) && jobs.some((j) => j.status === "pending" || j.status === "processing");
@@ -106,16 +113,65 @@ export default function HomePage() {
   useEffect(() => {
     if (!hasActiveJobs) return;
 
-    const intervalId = setInterval(() => {
-      fetchJobs();
-    }, 15000);
+    const intervalId = setInterval(
+      () => {
+        fetchJobs();
+      },
+      isQuoteReel ? 3000 : 15000,
+    );
 
     return () => clearInterval(intervalId);
   }, [hasActiveJobs]);
 
+  async function createQuoteReelJob() {
+    if (!quotePrompt.trim()) return;
+
+    setLoading(true);
+    try {
+      const res = await authedJsonFetch(`${API}/api/quote-reel`, {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: quotePrompt,
+          tone: quoteTone,
+          // overlayHandle,
+          captionsEnabled,
+          captionStyle,
+        }),
+      });
+
+      if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Pro only. Upgrade to continue.");
+        setShowUpgrade(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to create Quote Reel.");
+        setShowUpgrade(false);
+        return;
+      }
+
+      setPaywallMessage(null);
+      setShowUpgrade(false);
+      setQuotePrompt("");
+      await fetchJobs();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (jobGoal === "quote_reel") {
+      await createQuoteReelJob();
+      return;
+    }
+
     if (!url.trim()) return;
+
     setLoading(true);
     try {
       const res = await authedJsonFetch(`${API}/api/url`, {
@@ -287,8 +343,9 @@ export default function HomePage() {
     if (data?.url) window.location.href = data.url;
   }
 
-  const optimizedLabel =
-    aspect === "horizontal"
+  const optimizedLabel = isQuoteReel
+    ? "Instagram Reels / TikTok / Shorts"
+    : aspect === "horizontal"
       ? "YouTube / desktop"
       : aspect === "vertical"
         ? "TikTok / Reels / Shorts (crop)"
@@ -328,6 +385,13 @@ export default function HomePage() {
     })();
   }, [user]);
 
+  useEffect(() => {
+    if (!isQuoteReel) return;
+    setAspect("vertical");
+    setMaxClips(1);
+    setUrl("");
+  }, [isQuoteReel]);
+
   if (authLoading || !user) return <div className="p-6">Loading...</div>;
 
   return (
@@ -347,7 +411,7 @@ export default function HomePage() {
                 </h1>
               </div>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Auto-clipped, AI-captioned, face-tracked shorts in one click.
+                Auto-clipped shorts, AI summaries, and cinematic Quote Reels in one place.
               </p>
             </div>
           </div>
@@ -394,7 +458,7 @@ export default function HomePage() {
             <div className="flex flex-col gap-1">
               <h2 className="text-base font-semibold text-slate-50">Create new job</h2>
               <p className="text-xs text-slate-400">
-                Paste a YouTube/TikTok URL or upload a video file. We&apos;ll handle the rest.
+                Create shorts from a URL, upload a video, or generate a Quote Reel from AI.
               </p>
             </div>
 
@@ -419,6 +483,12 @@ export default function HomePage() {
               </div>
             )}
 
+            {isQuoteReel && (
+              <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-4 py-3 text-[12px] text-fuchsia-200">
+                Quote Reel is prompt-based — URL and upload are disabled in this mode.
+              </div>
+            )}
+
             {/* URL input */}
             <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 sm:flex-row">
               <div className="relative flex-1">
@@ -427,12 +497,13 @@ export default function HomePage() {
                   placeholder="youtube.com/watch?v=..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40"
+                  disabled={loading || isQuoteReel}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isQuoteReel}
                 className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="hidden sm:inline">Generate from URL</span>
@@ -448,7 +519,13 @@ export default function HomePage() {
             </div>
 
             {/* Upload */}
-            <label className="group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700/90 bg-slate-900/60 px-4 py-5 text-center text-xs text-slate-300/90 transition hover:border-sky-500 hover:bg-slate-900/80">
+            <label
+              className={`group relative flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs transition ${
+                isQuoteReel
+                  ? "cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-500"
+                  : "cursor-pointer border-slate-700/90 bg-slate-900/60 text-slate-300/90 hover:border-sky-500 hover:bg-slate-900/80"
+              }`}
+            >
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] font-medium text-sky-300">
                   Upload video
@@ -462,8 +539,10 @@ export default function HomePage() {
                 type="file"
                 accept="video/*"
                 onChange={handleFileChange}
-                disabled={loading}
-                className="absolute inset-0 cursor-pointer opacity-0"
+                disabled={loading || isQuoteReel}
+                className={`absolute inset-0 opacity-0 ${
+                  isQuoteReel ? "cursor-not-allowed" : "cursor-pointer"
+                }`}
               />
             </label>
           </section>
@@ -471,7 +550,7 @@ export default function HomePage() {
           {/* OUTPUT FORMAT & SETTINGS */}
           <section className="space-y-4 rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5 shadow-xl shadow-black/40 backdrop-blur-md">
             {/* Aspect ratio */}
-            <div className="space-y-3">
+            <div className={`space-y-3 ${isQuoteReel ? "pointer-events-none opacity-40" : ""}`}>
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-50">Output format</h2>
                 <span className="text-[10px] text-slate-500">Optimized for {optimizedLabel}</span>
@@ -572,11 +651,15 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-50">Goal</h2>
                 <span className="text-[10px] text-slate-500">
-                  {jobGoal === "summary" ? `Summary ~${summaryTargetSec}s` : "Multiple shorts"}
+                  {jobGoal === "summary"
+                    ? `Summary ~${summaryTargetSec}s`
+                    : jobGoal === "quote_reel"
+                      ? `Quote Reel`
+                      : "Multiple shorts"}
                 </span>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setJobGoal("shorts")}
@@ -604,6 +687,22 @@ export default function HomePage() {
                   <div className="font-semibold">AI Story Summary (Pro)</div>
                   <div className="mt-0.5 text-[11px] text-slate-400">
                     One highlight reel around a target length.
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setJobGoal("quote_reel")}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    jobGoal === "quote_reel"
+                      ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+                  }`}
+                >
+                  <div className="font-semibold">Quote Reel (Pro)</div>
+                  <div className="mt-0.5 text-[11px] text-slate-400">
+                    Generate a faceless reel with a famous quote, curated visuals, and AI sound
+                    suggestions.
                   </div>
                 </button>
               </div>
@@ -652,59 +751,130 @@ export default function HomePage() {
             </div>
 
             {/* Clip settings */}
-            <div
-              className={`mt-4 grid gap-4 border-t border-slate-800/80 pt-4 md:grid-cols-2 ${
-                jobGoal === "summary" ? "pointer-events-none opacity-40" : ""
-              }`}
-            >
-              {/* Clip length */}
-              <div className="space-y-2 md:border-r md:border-slate-800/80 md:pr-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-slate-200">Clip length</h3>
-                  <span className="text-[10px] text-slate-500">~{clipDurationSec}s per short</span>
+            {jobGoal !== "quote_reel" && (
+              <div
+                className={`mt-4 grid gap-4 border-t border-slate-800/80 pt-4 md:grid-cols-2 ${
+                  jobGoal === "summary" ? "pointer-events-none opacity-40" : ""
+                }`}
+              >
+                {/* Clip length */}
+                <div className="space-y-2 md:border-r md:border-slate-800/80 md:pr-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-slate-200">Clip length</h3>
+                    <span className="text-[10px] text-slate-500">
+                      ~{clipDurationSec}s per short
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {[20, 30, 45, 60, 90].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setClipDurationSec(val)}
+                        className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                          clipDurationSec === val
+                            ? "bg-sky-500 text-slate-950 shadow shadow-sky-500/40"
+                            : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        {val}s
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {[20, 30, 45, 60, 90].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setClipDurationSec(val)}
-                      className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                        clipDurationSec === val
-                          ? "bg-sky-500 text-slate-950 shadow shadow-sky-500/40"
-                          : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
-                      }`}
-                    >
-                      {val}s
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Max clips */}
-              <div className="space-y-2 md:pl-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-slate-200">Max clips per video</h3>
-                  <span className="text-[10px] text-slate-500">Up to {maxClips} shorts</span>
-                </div>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setMaxClips(val)}
-                      className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                        maxClips === val
-                          ? "bg-emerald-500 text-slate-950 shadow shadow-emerald-500/40"
-                          : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
-                      }`}
-                    >
-                      {val} clip{val > 1 ? "s" : ""}
-                    </button>
-                  ))}
+                {/* Max clips */}
+                <div className="space-y-2 md:pl-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-slate-200">Max clips per video</h3>
+                    <span className="text-[10px] text-slate-500">Up to {maxClips} shorts</span>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMaxClips(val)}
+                        className={`min-w-15 rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                          maxClips === val
+                            ? "bg-emerald-500 text-slate-950 shadow shadow-emerald-500/40"
+                            : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        {val} clip{val > 1 ? "s" : ""}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {jobGoal === "quote_reel" && (
+              <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-200">Quote Reel settings</div>
+                    <div className="mt-0.5 text-[10px] text-slate-500">
+                      Premium image packs + famous quote + caption + sound suggestion
+                    </div>
+                  </div>
+
+                  <span className="rounded-full bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold text-fuchsia-200 ring-1 ring-fuchsia-500/20">
+                    Pro
+                  </span>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-[11px] font-medium text-slate-300">
+                    Theme / keywords*
+                  </label>
+                  <textarea
+                    value={quotePrompt}
+                    onChange={(e) => setQuotePrompt(e.target.value)}
+                    rows={4}
+                    placeholder="discipline, pain, self-control, ambition, success, God..."
+                    className="mt-1 w-full resize-none rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20"
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-300">Tone</label>
+                    <select
+                      value={quoteTone}
+                      onChange={(e) => setQuoteTone(e.target.value as QuoteTone)}
+                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20"
+                    >
+                      <option value="cinematic">Cinematic</option>
+                      <option value="aggressive">Aggressive</option>
+                      <option value="calm">Calm</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </div>
+
+                  {/*<div>*/}
+                  {/*  <label className="text-[11px] font-medium text-slate-300">*/}
+                  {/*    Edited by handle*/}
+                  {/*  </label>*/}
+                  {/*  <input*/}
+                  {/*    value={overlayHandle}*/}
+                  {/*    onChange={(e) => setOverlayHandle(e.target.value)}*/}
+                  {/*    placeholder="@duradorin"*/}
+                  {/*    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20"*/}
+                  {/*  />*/}
+                  {/*</div>*/}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={createQuoteReelJob}
+                  disabled={loading || !quotePrompt.trim()}
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-fuchsia-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow shadow-fuchsia-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Generating..." : "Generate Quote Reel"}
+                </button>
+              </div>
+            )}
 
             {/* Captions */}
             <div className="mt-4 border-t border-slate-800/80 pt-4">
@@ -829,8 +999,7 @@ export default function HomePage() {
             <div className="max-h-[460px] space-y-2 overflow-auto text-sm">
               {jobs.length === 0 && (
                 <p className="rounded-xl border border-dashed border-slate-800/80 bg-slate-950/80 px-3 py-4 text-[12px] text-slate-400">
-                  No jobs yet. Paste a URL or upload a file to generate your first face-aware
-                  shorts.
+                  No jobs yet. Paste a URL, upload a file, or generate your first Quote Reel.
                 </p>
               )}
 
@@ -901,30 +1070,36 @@ export default function HomePage() {
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
                       {job.jobGoal && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
-                          Goal: {job.jobGoal === "summary" ? "Summary" : "Shorts"}
+                          Goal:{" "}
+                          {job.jobGoal === "summary"
+                            ? "Summary"
+                            : job.jobGoal === "quote_reel"
+                              ? "Quote Reel"
+                              : "Shorts"}
                           {job.jobGoal === "summary" && job.summaryTargetSec
                             ? ` (~${job.summaryTargetSec}s)`
-                            : ""}
+                            : job.jobGoal === "quote_reel" &&
+                                job.quoteReelMeta?.recommendedDurationSec
+                              ? ` (~${job.quoteReelMeta.recommendedDurationSec}s)`
+                              : ""}
                         </span>
                       )}
 
                       {job.aspect && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
-                          <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
-                            {job.aspect === "vertical"
-                              ? "Vertical 9:16 (Crop)"
-                              : job.aspect === "verticalLetterbox"
-                                ? "Vertical 9:16 (Bars)"
-                                : "Horizontal 16:9"}
-                          </span>
+                          {job.aspect === "vertical"
+                            ? "Vertical 9:16 (Crop)"
+                            : job.aspect === "verticalLetterbox"
+                              ? "Vertical 9:16 (Bars)"
+                              : "Horizontal 16:9"}
                         </span>
                       )}
-                      {job.clipDurationSec && job.jobGoal !== "summary" && (
+                      {job.clipDurationSec && job.jobGoal === "shorts" && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
                           ~{job.clipDurationSec}s clips
                         </span>
                       )}
-                      {job.maxClips && job.jobGoal !== "summary" && (
+                      {job.maxClips && job.jobGoal === "shorts" && (
                         <span className="rounded-full bg-slate-900/80 px-2 py-0.5">
                           up to {job.maxClips} clips
                         </span>
@@ -938,6 +1113,76 @@ export default function HomePage() {
                         </span>
                       )}
                     </div>
+
+                    {job.quoteReelMeta?.quote && (
+                      <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-900/60 p-3">
+                        <div className="text-[11px] font-semibold text-slate-200">
+                          Generated quote
+                        </div>
+                        <div className="mt-1 text-[12px] text-slate-100 italic">
+                          “{job.quoteReelMeta.quote}”
+                        </div>
+                        {job.quoteReelMeta.author && (
+                          <div className="mt-1 text-[10px] text-slate-400">
+                            — {job.quoteReelMeta.author}
+                          </div>
+                        )}
+
+                        {job.quoteReelMeta.hashtags?.length ? (
+                          <div className="mt-2 text-[10px] text-slate-500">
+                            {job.quoteReelMeta.hashtags.join(" ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {job.quoteReelMeta?.instagramCaption && (
+                      <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[10px] font-semibold text-slate-300">
+                            Instagram caption
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigator.clipboard.writeText(
+                                job.quoteReelMeta?.instagramCaption ?? "",
+                              )
+                            }
+                            className="rounded-full border border-slate-700 px-2 py-0.5 text-[9px] text-slate-300 hover:bg-slate-900"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <div className="mt-1 text-[10px] whitespace-pre-wrap text-slate-400">
+                          {job.quoteReelMeta.instagramCaption}
+                        </div>
+                      </div>
+                    )}
+
+                    {/*{job.quoteReelMeta?.musicSuggestion && (*/}
+                    {/*  <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">*/}
+                    {/*    <div className="text-[10px] font-semibold text-slate-300">*/}
+                    {/*      Sound suggestion*/}
+                    {/*    </div>*/}
+
+                    {/*    <div className="mt-1 text-[10px] text-slate-200">*/}
+                    {/*      {job.quoteReelMeta?.musicSuggestion?.title}*/}
+                    {/*    </div>*/}
+
+                    {/*    {job.quoteReelMeta.musicSuggestion.searchQuery && (*/}
+                    {/*      <div className="mt-1 text-[10px] text-slate-500">*/}
+                    {/*        Search: {job.quoteReelMeta.musicSuggestion.searchQuery}*/}
+                    {/*      </div>*/}
+                    {/*    )}*/}
+
+                    {/*    {job.quoteReelMeta.musicSuggestion.reason && (*/}
+                    {/*      <div className="mt-1 text-[10px] text-slate-500">*/}
+                    {/*        {job.quoteReelMeta.musicSuggestion.reason}*/}
+                    {/*      </div>*/}
+                    {/*    )}*/}
+                    {/*  </div>*/}
+                    {/*)}*/}
 
                     {/* Stage + progress */}
                     {job.stage && (
@@ -967,7 +1212,9 @@ export default function HomePage() {
                     {job.captionedClips && job.captionedClips.length > 0 && (
                       <div className="mt-3 space-y-2">
                         <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>Captioned shorts</span>
+                          <span>
+                            {job.jobGoal === "quote_reel" ? "Generated reel" : "Captioned shorts"}
+                          </span>
                           <span className="text-[10px] text-slate-500">
                             {job.captionedClips.length} file
                             {job.captionedClips.length > 1 ? "s" : ""}
@@ -977,7 +1224,8 @@ export default function HomePage() {
                         <div className="grid grid-cols-1 gap-2">
                           {job.captionedClips.map((url, idx) => {
                             const thumb = job.captionedThumbs?.[idx];
-                            const title = `Short ${idx + 1}`;
+                            const title =
+                              job.jobGoal === "quote_reel" ? "Quote Reel" : `Short ${idx + 1}`;
 
                             const key = `${job.id}:${idx}`;
                             const isThisDownloading = isDownloading && downloadingKey === key;
@@ -994,7 +1242,8 @@ export default function HomePage() {
                                       alt={title}
                                       className="h-full w-full object-cover"
                                     />
-                                    {(aspect === "vertical" || aspect === "verticalLetterbox") && (
+                                    {(job.aspect === "vertical" ||
+                                      job.aspect === "verticalLetterbox") && (
                                       <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[8px] text-slate-200">
                                         9:16
                                       </span>
@@ -1007,7 +1256,13 @@ export default function HomePage() {
                                   <div className="mt-1 flex flex-wrap gap-2">
                                     <button
                                       onClick={() =>
-                                        downloadWithAuth(url, `short-${idx + 1}.mp4`, key)
+                                        downloadWithAuth(
+                                          url,
+                                          job.jobGoal === "quote_reel"
+                                            ? "quote-reel.mp4"
+                                            : `short-${idx + 1}.mp4`,
+                                          key,
+                                        )
                                       }
                                       disabled={isDownloading}
                                       className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"

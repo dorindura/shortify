@@ -125,7 +125,7 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
     Alignment: 2,
     MarginL: 80,
     MarginR: 80,
-    MarginV: 120,
+    MarginV: 285,
     Encoding: 1,
   };
 
@@ -200,7 +200,7 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
     [
       "Default",
       fontName,
-      62, // a bit bigger
+      74, // a bit bigger
       "&H00FFFFFF&", // white
       "&H00FFD200&", // yellow fill (your original)
       "&HDD000000&", // outline
@@ -258,7 +258,11 @@ function safeAssText(raw: string): string {
   return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/\s+/g, " ").trim();
 }
 
-async function runCmd(cmd: string, args: string[], logPrefix: string): Promise<void> {
+async function runCmd(
+  cmd: string,
+  args: string[],
+  logPrefix: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args);
     let stderr = "";
@@ -268,7 +272,9 @@ async function runCmd(cmd: string, args: string[], logPrefix: string): Promise<v
 
     proc.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
+      else {reject(
+          new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`),
+        );}
     });
   });
 }
@@ -370,8 +376,7 @@ function buildKaraokeForChunk(words: WhisperWord[]): string {
     // We keep \k EXACT. We add transforms for just this word:
     // - Pop in early, pop out near the end of that word.
     // Tags scope to subsequent text, so we reset scale immediately after the word.
-    assText +=
-      `{\\k${durCs}}` +
+    assText += `{\\k${durCs}}` +
       `{\\t(${wordStartMs},${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
       `\\t(${popOutStart},${wordEndMs},\\fscx100\\fscy100)}` +
       `${rawWord}` +
@@ -390,7 +395,9 @@ function buildKaraokeForChunk(words: WhisperWord[]): string {
 function buildKaraokeChunksFromSegment(
   seg: WhisperSegment,
 ): { start: number; end: number; text: string }[] {
-  const words = seg.words && seg.words.length > 0 ? seg.words : synthesizeWordsFromSegment(seg);
+  const words = seg.words && seg.words.length > 0
+    ? seg.words
+    : synthesizeWordsFromSegment(seg);
   if (!words.length) return [];
 
   const chunks: { start: number; end: number; text: string }[] = [];
@@ -477,7 +484,11 @@ export async function transcribeClipToAss(
       console.warn(
         "[transcribeClipToAss] No segments returned – writing empty ASS with header only",
       );
-      await fsp.writeFile(outAssPath, buildAssHeader(captionStyle, fontName), "utf8");
+      await fsp.writeFile(
+        outAssPath,
+        buildAssHeader(captionStyle, fontName),
+        "utf8",
+      );
       return outAssPath;
     }
 
@@ -486,10 +497,9 @@ export async function transcribeClipToAss(
     let ass = buildAssHeader(captionStyle, fontName);
 
     for (const seg of resp.segments) {
-      const chunks =
-        captionStyle === "karaoke"
-          ? buildKaraokeChunksFromSegment(seg)
-          : buildPlainChunksFromSegment(seg);
+      const chunks = captionStyle === "karaoke"
+        ? buildKaraokeChunksFromSegment(seg)
+        : buildPlainChunksFromSegment(seg);
 
       if (!chunks.length) continue;
 
@@ -499,14 +509,24 @@ export async function transcribeClipToAss(
 
         const baseText = safeAssText(chunk.text);
 
-        const styledText =
-          captionStyle === "karaoke"
-            ? baseText // already has tags + transforms
-            : applyInlineStyle(baseText, captionStyle);
+        const styledText = captionStyle === "karaoke"
+          ? baseText // already has tags + transforms
+          : applyInlineStyle(baseText, captionStyle);
 
         const text = `${lineFade()}${styledText}`;
 
-        const dialogue = ["Dialogue: 0", start, end, "Default", "", "0", "0", "0", "", text].join(
+        const dialogue = [
+          "Dialogue: 0",
+          start,
+          end,
+          "Default",
+          "",
+          "0",
+          "0",
+          "0",
+          "",
+          text,
+        ].join(
           ",",
         );
         ass += dialogue + "\n";
@@ -520,7 +540,11 @@ export async function transcribeClipToAss(
     console.error("[transcribeClipToAss] Error:", err);
 
     await ensureDir(path.dirname(outAssPath));
-    await fsp.writeFile(outAssPath, buildAssHeader(captionStyle, fontName), "utf8");
+    await fsp.writeFile(
+      outAssPath,
+      buildAssHeader(captionStyle, fontName),
+      "utf8",
+    );
     console.log("[transcribeClipToAss] Wrote empty ASS fallback:", outAssPath);
     return outAssPath;
   } finally {
@@ -545,7 +569,12 @@ export async function generateSubtitlesForClips(
   for (const clipPath of clips) {
     const base = path.basename(clipPath, path.extname(clipPath));
     const assPath = path.join(SUBS_DIR, `${base}.ass`);
-    const outPath = await transcribeClipToAss(clipPath, assPath, captionStyle, fontName);
+    const outPath = await transcribeClipToAss(
+      clipPath,
+      assPath,
+      captionStyle,
+      fontName,
+    );
     subtitleFiles.push(outPath);
   }
 
