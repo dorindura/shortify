@@ -1,4 +1,3 @@
-// src/server/jobs/workerRunner.ts
 import { Worker } from "bullmq";
 import IORedis from "ioredis";
 import { processJob } from "@/server/jobs/worker";
@@ -20,5 +19,11 @@ new Worker(
     await processJob(jobId);
     return { ok: true };
   },
-  { connection, concurrency },
+  {
+    connection,
+    concurrency,
+    lockDuration: 300_000,
+    stalledInterval: 60_000,
+    autorun: true,
+  },
 );
