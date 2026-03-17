@@ -66,6 +66,13 @@ export default function HomePage() {
 
   type JobGoal = "shorts" | "summary" | "quote_reel";
   type QuoteTone = "aggressive" | "cinematic" | "calm" | "dark";
+  type ShortsSelectionMode = "auto" | "custom";
+
+  type CustomRange = {
+    id: string;
+    startSec: string;
+    endSec: string;
+  };
   const [jobGoal, setJobGoal] = useState<JobGoal>("shorts");
   const [summaryTargetSec, setSummaryTargetSec] = useState<number>(90);
 
@@ -73,10 +80,82 @@ export default function HomePage() {
   const [quoteTone, setQuoteTone] = useState<QuoteTone>("cinematic");
   // const [overlayHandle, setOverlayHandle] = useState("");
 
+  const [selectionMode, setSelectionMode] = useState<ShortsSelectionMode>("auto");
+
+  const [customRanges, setCustomRanges] = useState<CustomRange[]>([
+    { id: crypto.randomUUID(), startSec: "", endSec: "" },
+  ]);
+
   const isQuoteReel = jobGoal === "quote_reel";
 
   const hasActiveJobs =
     Array.isArray(jobs) && jobs.some((j) => j.status === "pending" || j.status === "processing");
+
+  function parseTimeToSeconds(input: string): number | null {
+    const value = input.trim();
+
+    if (!value) return null;
+
+    if (value.includes(":")) {
+      const parts = value.split(":").map((part) => part.trim());
+
+      if (parts.length !== 2) return null;
+
+      const minutes = Number(parts[0]);
+      const seconds = Number(parts[1]);
+
+      if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) return null;
+      if (minutes < 0 || seconds < 0 || seconds >= 60) return null;
+
+      return minutes * 60 + seconds;
+    }
+
+    const totalSeconds = Number(value);
+    if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return null;
+
+    return totalSeconds;
+  }
+
+  function addCustomRange() {
+    setCustomRanges((prev) => [...prev, { id: crypto.randomUUID(), startSec: "", endSec: "" }]);
+  }
+
+  function updateCustomRange(id: string, field: "startSec" | "endSec", value: string) {
+    setCustomRanges((prev) =>
+      prev.map((range) => (range.id === id ? { ...range, [field]: value } : range)),
+    );
+  }
+
+  function removeCustomRange(id: string) {
+    setCustomRanges((prev) => {
+      const next = prev.filter((range) => range.id !== id);
+      return next.length ? next : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }];
+    });
+  }
+
+  function buildCustomRangesPayload() {
+    return customRanges
+      .map((range) => ({
+        id: range.id,
+        startSec: parseTimeToSeconds(range.startSec),
+        endSec: parseTimeToSeconds(range.endSec),
+      }))
+      .filter(
+        (
+          range,
+        ): range is {
+          id: string;
+          startSec: number;
+          endSec: number;
+        } =>
+          typeof range.startSec === "number" &&
+          typeof range.endSec === "number" &&
+          Number.isFinite(range.startSec) &&
+          Number.isFinite(range.endSec) &&
+          range.endSec > range.startSec &&
+          range.endSec - range.startSec >= 0.6,
+      );
+  }
 
   async function fetchJobs() {
     try {
@@ -185,6 +264,8 @@ export default function HomePage() {
           captionStyle,
           jobGoal,
           summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
+          selectionMode,
+          customRanges: selectionMode === "custom" ? buildCustomRangesPayload() : [],
         }),
       });
 
@@ -223,6 +304,12 @@ export default function HomePage() {
     formData.append("captionStyle", captionStyle);
 
     formData.append("jobGoal", jobGoal);
+
+    formData.append("selectionMode", selectionMode);
+
+    if (selectionMode === "custom") {
+      formData.append("customRanges", JSON.stringify(buildCustomRangesPayload()));
+    }
 
     if (jobGoal === "summary") {
       formData.append("summaryTargetSec", String(summaryTargetSec));
@@ -390,7 +477,10 @@ export default function HomePage() {
     setAspect("vertical");
     setMaxClips(1);
     setUrl("");
+    setSelectionMode("auto");
   }, [isQuoteReel]);
+
+  const validCustomRangesCount = buildCustomRangesPayload().length;
 
   if (authLoading || !user) return <div className="p-6">Loading...</div>;
 
@@ -503,7 +593,11 @@ export default function HomePage() {
               </div>
               <button
                 type="submit"
-                disabled={loading || isQuoteReel}
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                }
                 className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="hidden sm:inline">Generate from URL</span>
@@ -539,7 +633,11 @@ export default function HomePage() {
                 type="file"
                 accept="video/*"
                 onChange={handleFileChange}
-                disabled={loading || isQuoteReel}
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                }
                 className={`absolute inset-0 opacity-0 ${
                   isQuoteReel ? "cursor-not-allowed" : "cursor-pointer"
                 }`}
@@ -749,6 +847,139 @@ export default function HomePage() {
                 )}
               </div>
             </div>
+
+            {jobGoal === "shorts" && (
+              <div className="mt-4 border-t border-slate-800/80 pt-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-slate-50">Clip selection</h2>
+                  <span className="text-[10px] text-slate-500">
+                    {selectionMode === "custom" ? "Manual periods" : "AI auto-detect"}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectionMode("auto")}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                      selectionMode === "auto"
+                        ? "border-sky-500 bg-slate-900/80 text-slate-50"
+                        : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-500/60"
+                    }`}
+                  >
+                    <div className="font-semibold">AI Auto</div>
+                    <div className="mt-0.5 text-[11px] text-slate-400">
+                      Let AI detect the best short-form moments automatically.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectionMode("custom")}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                      selectionMode === "custom"
+                        ? "border-emerald-500 bg-slate-900/80 text-slate-50"
+                        : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"
+                    }`}
+                  >
+                    <div className="font-semibold">Custom periods</div>
+                    <div className="mt-0.5 text-[11px] text-slate-400">
+                      Choose exact start and end moments for each short.
+                    </div>
+                  </button>
+                </div>
+
+                {selectionMode === "custom" && (
+                  <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-semibold text-slate-200">
+                          Custom clip periods
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-slate-500">
+                          Add exact time ranges using mm:ss or seconds. Example: 12:45 → 13:22
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addCustomRange}
+                        className="rounded-full border border-emerald-500/60 px-3 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                      >
+                        + Add clip
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {customRanges.map((range, index) => (
+                        <div
+                          key={range.id}
+                          className="rounded-xl border border-slate-800/80 bg-slate-950/80 p-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-[11px] font-semibold text-slate-200">
+                              Clip {index + 1}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeCustomRange(range.id)}
+                              className="rounded-full border border-rose-500/60 px-2.5 py-1 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/10"
+                            >
+                              Remove
+                            </button>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="text-[10px] font-medium text-slate-400">
+                                Start (mm:ss)
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={range.startSec}
+                                onChange={(e) =>
+                                  updateCustomRange(range.id, "startSec", e.target.value)
+                                }
+                                placeholder="12:45"
+                                className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-medium text-slate-400">
+                                End (mm:ss)
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={range.endSec}
+                                onChange={(e) =>
+                                  updateCustomRange(range.id, "endSec", e.target.value)
+                                }
+                                placeholder="13:22"
+                                className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-2 text-[10px] text-slate-500">
+                            Accepted formats: <span className="text-slate-300">mm:ss</span> or{" "}
+                            <span className="text-slate-300">seconds</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-200">
+                      In custom mode, invalid ranges will fail the job instead of falling back to
+                      AI.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Clip settings */}
             {jobGoal !== "quote_reel" && (

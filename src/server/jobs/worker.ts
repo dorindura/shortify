@@ -37,8 +37,7 @@ function subtitleToPath(s: SubtitleFile): string {
 export async function processJob(jobId: string) {
   const job = await dbGetJob(jobId);
   if (!job) {
-    console.warn(`[processJob] Job not found: ${jobId}`);
-    return;
+    throw new Error(`[processJob] Job not found: ${jobId}`);
   }
 
   if (job.job_goal === "quote_reel") {
@@ -70,6 +69,9 @@ export async function processJob(jobId: string) {
     const summaryTargetSec = typeof job.summary_target_sec === "number"
       ? job.summary_target_sec
       : 90;
+    const shortsConfig = job.shorts_config ?? null;
+    const isCustomSelection = !!shortsConfig &&
+      shortsConfig.selectionMode === "custom";
 
     // --- AI CLIP ANALYSIS ---
     await dbUpdateJobStage(jobId, "captioning", 25);
@@ -128,35 +130,70 @@ export async function processJob(jobId: string) {
     } else {
       // existing shorts logic (as you already have)
       try {
-        const candidates: ClipCandidate[] = await analyzeTranscriptForClips(
-          videoInput,
-          {
-            maxClips: desiredMaxClips,
-            minDurationSec: Math.max(10, desiredClipDuration - 5),
-            maxDurationSec: desiredClipDuration + 10,
-            targetDurationSec: desiredClipDuration,
-          },
-        );
+        if (isCustomSelection) {
+          if (
+            !Array.isArray(shortsConfig?.customRanges) ||
+            shortsConfig.customRanges.length === 0
+          ) {
+            throw new Error(
+              "Custom selection mode requires at least one valid range.",
+            );
+          }
 
-        if (candidates.length > 0) {
-          usedAICandidates = true;
+          console.log("[processJob] Using custom clip ranges");
+
+          const ranges = shortsConfig.customRanges
+            .map((r: any) => ({
+              start: Math.max(0, Number(r.startSec ?? 0)),
+              end: Number(r.endSec ?? 0),
+            }))
+            .filter(
+              (r: { start: number; end: number }) =>
+                Number.isFinite(r.start) &&
+                Number.isFinite(r.end) &&
+                r.end > r.start &&
+                r.end - r.start >= 0.6,
+            );
+
+          if (!ranges.length) {
+            throw new Error("No valid custom clip ranges after validation.");
+          }
+
           await dbUpdateJobStage(jobId, "scoring", 35);
 
-          const PAD = 2.0;
-          const ranges = candidates.map((c) => ({
-            start: Math.max(0, c.start - PAD),
-            end: c.end + PAD,
-          }));
-
           clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
+          usedAICandidates = true;
         } else {
-          console.warn(
-            "[processJob] No AI candidates found, will fall back to legacy clipping.",
+          const candidates: ClipCandidate[] = await analyzeTranscriptForClips(
+            videoInput,
+            {
+              maxClips: desiredMaxClips,
+              minDurationSec: Math.max(10, desiredClipDuration - 5),
+              maxDurationSec: desiredClipDuration + 10,
+              targetDurationSec: desiredClipDuration,
+            },
           );
+
+          if (candidates.length > 0) {
+            usedAICandidates = true;
+            await dbUpdateJobStage(jobId, "scoring", 35);
+
+            const PAD = 2.0;
+            const ranges = candidates.map((c) => ({
+              start: Math.max(0, c.start - PAD),
+              end: c.end + PAD,
+            }));
+
+            clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
+          }
         }
       } catch (err) {
+        if (isCustomSelection) {
+          throw err;
+        }
+
         console.error(
-          "[processJob] Error during AI clip analysis. Falling back:",
+          "[processJob] Error during clip analysis/selection. Falling back:",
           err,
         );
       }
@@ -173,6 +210,12 @@ export async function processJob(jobId: string) {
         });
         clips = one;
       } else {
+        if (isCustomSelection) {
+          throw new Error(
+            "Custom clip ranges were provided but no valid clips could be created.",
+          );
+        }
+
         clips = await createClipsFromVideo(videoInput, {
           clipDurationSec: desiredClipDuration,
           maxClips: desiredMaxClips,

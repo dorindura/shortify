@@ -1,5 +1,6 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
+export type ShortsSelectionMode = "auto" | "custom";
 export type JobType = "upload" | "url" | "quote_reel";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
 export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
@@ -18,6 +19,17 @@ export type JobStage =
 export type JobGoal = "shorts" | "summary" | "quote_reel";
 
 export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark";
+
+export type ShortsCustomRange = {
+  id: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type ShortsConfig = {
+  selectionMode: ShortsSelectionMode;
+  customRanges?: ShortsCustomRange[];
+};
 
 export type QuoteReelMeta = {
   quote?: string;
@@ -65,6 +77,7 @@ export type Job = {
   // NEW
   quotePrompt?: string;
   quoteReelMeta?: QuoteReelMeta;
+  shortsConfig?: ShortsConfig;
 };
 
 const jobs: Job[] = [];

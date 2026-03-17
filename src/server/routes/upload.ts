@@ -20,7 +20,9 @@ export async function registerUploadRoute(app: FastifyInstance) {
     if (!mp) return reply.code(400).send({ error: "No file provided" });
 
     if (!hasVideoExtension(mp.filename)) {
-      return reply.code(400).send({ error: "File is not a supported video type" });
+      return reply.code(400).send({
+        error: "File is not a supported video type",
+      });
     }
 
     // Read extra fields from multipart
@@ -59,6 +61,17 @@ export async function registerUploadRoute(app: FastifyInstance) {
         ? captionStyleField
         : "karaoke";
 
+    const selectionMode =
+      String(fields?.selectionMode?.value ?? "auto") === "custom" ? "custom" : "auto";
+
+    let customRanges: any[] = [];
+
+    try {
+      customRanges = JSON.parse(fields?.customRanges?.value ?? "[]");
+    } catch {
+      customRanges = [];
+    }
+
     const limit = await enforceJobLimits(user.id, {
       clipDurationSec,
       maxClips,
@@ -67,7 +80,10 @@ export async function registerUploadRoute(app: FastifyInstance) {
       summaryTargetSec,
     });
     if (!limit.ok) {
-      return reply.code(402).send({ error: limit.reason, upgradeRequired: true });
+      return reply.code(402).send({
+        error: limit.reason,
+        upgradeRequired: true,
+      });
     }
 
     // Fly: use /tmp (ephemeral)
@@ -102,6 +118,10 @@ export async function registerUploadRoute(app: FastifyInstance) {
       captionedThumbs: [],
       stage: "queued",
       progress: 0,
+      shortsConfig: {
+        selectionMode,
+        customRanges,
+      },
     };
 
     await createJob(job, supabaseAdmin());

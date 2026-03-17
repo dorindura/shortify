@@ -16,6 +16,10 @@ export async function registerUrlRoute(app: FastifyInstance) {
 
     const body = (req.body ?? {}) as any;
 
+    const selectionMode = body.selectionMode === "custom" ? "custom" : "auto";
+
+    const customRanges = Array.isArray(body.customRanges) ? body.customRanges : [];
+
     if (!body || typeof body.url !== "string") {
       return reply.code(400).send({ error: "Missing url" });
     }
@@ -62,7 +66,10 @@ export async function registerUrlRoute(app: FastifyInstance) {
       summaryTargetSec,
     });
     if (!limit.ok) {
-      return reply.code(402).send({ error: limit.reason, upgradeRequired: true });
+      return reply.code(402).send({
+        error: limit.reason,
+        upgradeRequired: true,
+      });
     }
 
     const now = new Date().toISOString();
@@ -87,10 +94,14 @@ export async function registerUrlRoute(app: FastifyInstance) {
       captionedThumbs: [],
       stage: "queued",
       progress: 0,
+      shortsConfig: {
+        selectionMode,
+        customRanges,
+      },
     };
 
     await createJob(job, supabaseAdmin());
-    enqueueJob(job).catch(console.error);
+    await enqueueJob(job);
 
     return reply.code(201).send({ job });
   });
