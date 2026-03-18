@@ -1,8 +1,11 @@
 // src/server/jobs/worker.ts
 import {
   dbGetJob,
+  dbSetJobCaptionDrafts,
   dbSetJobCaptionedResults,
   dbSetJobClips,
+  dbSetJobReviewReady,
+  dbSetJobTextOverlays,
   dbUpdateJobStage,
   dbUpdateJobStatus,
 } from "@/server/jobs/jobsDb";
@@ -15,7 +18,6 @@ import {
   createClipsFromVideo,
   createClipsFromVideoUsingRanges,
 } from "@server/video/clip";
-import { generateSubtitlesForClips } from "@server/video/caption";
 import { renderShortsWithSubtitles } from "@server/video/render";
 import {
   analyzeTranscriptForClips,
@@ -27,6 +29,11 @@ import { extractAudioForWhisper } from "@server/video/audio";
 import { analyzeAudioEnergyForClip } from "@server/video/audioEnergy";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
 import { processQuoteReelJob } from "@server/jobs/processQuoteReelJob";
+import {
+  type CaptionDraftClip,
+  generateCaptionDraftsForClips,
+  generateSubtitlesFromDrafts,
+} from "@server/video/caption";
 
 type SubtitleFile = string | { path: string };
 
@@ -66,12 +73,10 @@ export async function processJob(jobId: string) {
     const aspect = job.aspect ?? "horizontal";
     const style = job.caption_style ?? "karaoke";
     const jobGoal = (job.job_goal ?? "shorts") as "shorts" | "summary";
-    const summaryTargetSec = typeof job.summary_target_sec === "number"
-      ? job.summary_target_sec
-      : 90;
+    const summaryTargetSec =
+      typeof job.summary_target_sec === "number" ? job.summary_target_sec : 90;
     const shortsConfig = job.shorts_config ?? null;
-    const isCustomSelection = !!shortsConfig &&
-      shortsConfig.selectionMode === "custom";
+    const isCustomSelection = !!shortsConfig && shortsConfig.selectionMode === "custom";
 
     // --- AI CLIP ANALYSIS ---
     await dbUpdateJobStage(jobId, "captioning", 25);
@@ -84,15 +89,9 @@ export async function processJob(jobId: string) {
     if (jobGoal === "summary") {
       const target = summaryTargetSec;
 
-      const desiredHighlights = Math.max(
-        4,
-        Math.min(10, Math.round(target / 10)),
-      );
+      const desiredHighlights = Math.max(4, Math.min(10, Math.round(target / 10)));
 
-      const segmentLenSec = Math.max(
-        6,
-        Math.min(14, target / desiredHighlights),
-      );
+      const segmentLenSec = Math.max(6, Math.min(14, target / desiredHighlights));
 
       const maxHighlights = Math.max(desiredHighlights + 5, 10);
 
@@ -103,9 +102,7 @@ export async function processJob(jobId: string) {
       });
 
       if (!ranges.length) {
-        console.warn(
-          "[processJob] No summary ranges found, falling back to legacy clipping.",
-        );
+        console.warn("[processJob] No summary ranges found, falling back to legacy clipping.");
       } else {
         usedAICandidates = true;
         await dbUpdateJobStage(jobId, "scoring", 35);
@@ -116,10 +113,7 @@ export async function processJob(jobId: string) {
           end: r.end + PAD,
         }));
 
-        const parts = await createClipsFromVideoUsingRanges(
-          videoInput,
-          clipRanges,
-        );
+        const parts = await createClipsFromVideoUsingRanges(videoInput, clipRanges);
         extraCleanupPaths.push(...parts);
 
         // IMPORTANT: concat into ONE summary clip
@@ -135,9 +129,7 @@ export async function processJob(jobId: string) {
             !Array.isArray(shortsConfig?.customRanges) ||
             shortsConfig.customRanges.length === 0
           ) {
-            throw new Error(
-              "Custom selection mode requires at least one valid range.",
-            );
+            throw new Error("Custom selection mode requires at least one valid range.");
           }
 
           console.log("[processJob] Using custom clip ranges");
@@ -164,15 +156,12 @@ export async function processJob(jobId: string) {
           clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
           usedAICandidates = true;
         } else {
-          const candidates: ClipCandidate[] = await analyzeTranscriptForClips(
-            videoInput,
-            {
-              maxClips: desiredMaxClips,
-              minDurationSec: Math.max(10, desiredClipDuration - 5),
-              maxDurationSec: desiredClipDuration + 10,
-              targetDurationSec: desiredClipDuration,
-            },
-          );
+          const candidates: ClipCandidate[] = await analyzeTranscriptForClips(videoInput, {
+            maxClips: desiredMaxClips,
+            minDurationSec: Math.max(10, desiredClipDuration - 5),
+            maxDurationSec: desiredClipDuration + 10,
+            targetDurationSec: desiredClipDuration,
+          });
 
           if (candidates.length > 0) {
             usedAICandidates = true;
@@ -192,10 +181,7 @@ export async function processJob(jobId: string) {
           throw err;
         }
 
-        console.error(
-          "[processJob] Error during clip analysis/selection. Falling back:",
-          err,
-        );
+        console.error("[processJob] Error during clip analysis/selection. Falling back:", err);
       }
     }
 
@@ -211,9 +197,7 @@ export async function processJob(jobId: string) {
         clips = one;
       } else {
         if (isCustomSelection) {
-          throw new Error(
-            "Custom clip ranges were provided but no valid clips could be created.",
-          );
+          throw new Error("Custom clip ranges were provided but no valid clips could be created.");
         }
 
         clips = await createClipsFromVideo(videoInput, {
@@ -236,24 +220,45 @@ export async function processJob(jobId: string) {
 
         console.log("[processJob] energyFrames", energyFrames.slice(0, 5));
       } catch (e) {
-        console.warn(
-          "[processJob] Failed to compute energy frames for clip:",
-          clipPath,
-          e,
-        );
+        console.warn("[processJob] Failed to compute energy frames for clip:", clipPath, e);
         energyByClip.push(null);
       }
     }
 
-    // --- SUBTITLES (AI) ---
+    // --- CAPTION DRAFTS / REVIEW DATA ---
     await dbUpdateJobStage(jobId, "captioning", 50);
-    const subtitleFiles = await generateSubtitlesForClips(clips, {
-      captionStyle: job.caption_style,
+
+    const captionDrafts: CaptionDraftClip[] = await generateCaptionDraftsForClips(clips);
+
+    await dbSetJobCaptionDrafts(jobId, captionDrafts);
+    await dbSetJobTextOverlays(jobId, []);
+
+    // Shorts stop here and wait for review/edit
+    if (jobGoal === "shorts") {
+      await dbSetJobReviewReady(jobId, true);
+      await dbUpdateJobStage(jobId, "finished", 100);
+      await dbUpdateJobStatus(jobId, "done");
+
+      await cleanupLocalJobArtifacts({
+        downloadedVideoPath: downloadedVideoPath ?? undefined,
+        clipPaths: [],
+        audioPaths,
+        subtitlePaths: [],
+        extraPaths: [...extraCleanupPaths],
+      });
+
+      return;
+    }
+
+    // Summary continues to final render from drafts
+    const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, clips, {
+      captionStyle: style,
     });
 
     const subtitlePaths: string[] = Array.isArray(subtitleFiles)
-      ? (subtitleFiles as SubtitleFile[]).map(subtitleToPath).filter(Boolean)
+      ? subtitleFiles.map(subtitleToPath).filter(Boolean)
       : [];
+
     // --- FACE-AWARE SMART CROP (NEW) ---
     await dbUpdateJobStage(jobId, "clipping", 60);
     const smartCrops = await analyzeFaceCropsForClips(clips, energyByClip);
@@ -264,16 +269,12 @@ export async function processJob(jobId: string) {
     let videos: string[] = [];
     let thumbs: string[] = [];
 
-    ({ videos, thumbs } = await renderShortsWithSubtitles(
-      clips,
-      subtitleFiles,
-      {
-        aspect,
-        style,
-        captionsEnabled,
-        smartCrop: smartCrops,
-      },
-    ));
+    ({ videos, thumbs } = await renderShortsWithSubtitles(clips, subtitleFiles, {
+      aspect,
+      style,
+      captionsEnabled,
+      smartCrop: smartCrops,
+    }));
 
     // ✅ Upload rendered videos/thumbs to Storage, store URLs in DB, cleanup local files
     const videoUrls: string[] = [];
@@ -284,15 +285,10 @@ export async function processJob(jobId: string) {
       const localThumbPath = thumbs?.[i];
 
       const videoObjectPath = `jobs/${jobId}/short-${i + 1}.mp4`;
-      const thumbExt = localThumbPath
-        ? path.extname(localThumbPath) || ".jpg"
-        : ".jpg";
+      const thumbExt = localThumbPath ? path.extname(localThumbPath) || ".jpg" : ".jpg";
       const thumbObjectPath = `jobs/${jobId}/thumb-${i + 1}${thumbExt}`;
 
-      const uploadedVideo = await uploadLocalFileToStorage(
-        localVideoPath,
-        videoObjectPath,
-      );
+      const uploadedVideo = await uploadLocalFileToStorage(localVideoPath, videoObjectPath);
       videoUrls.push(uploadedVideo.publicUrl); // ✅
 
       if (!uploadedVideo.publicUrl) {
@@ -300,10 +296,7 @@ export async function processJob(jobId: string) {
       }
 
       if (localThumbPath) {
-        const uploadedThumb = await uploadLocalFileToStorage(
-          localThumbPath,
-          thumbObjectPath,
-        );
+        const uploadedThumb = await uploadLocalFileToStorage(localThumbPath, thumbObjectPath);
         thumbUrls.push(uploadedThumb.publicUrl); // ✅
       } else {
         thumbUrls.push("");
@@ -317,11 +310,7 @@ export async function processJob(jobId: string) {
       clipPaths: clips,
       audioPaths,
       subtitlePaths,
-      extraPaths: [
-        ...videos,
-        ...(thumbs ?? []).filter(Boolean),
-        ...extraCleanupPaths,
-      ],
+      extraPaths: [...videos, ...(thumbs ?? []).filter(Boolean), ...extraCleanupPaths],
     });
 
     await dbUpdateJobStage(jobId, "finished", 100);

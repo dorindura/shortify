@@ -54,3 +54,15 @@ export async function dbUpdateJobQuoteMeta(jobId: string, quoteReelMeta: any) {
 
   if (error) throw error;
 }
+
+export async function dbSetJobCaptionDrafts(jobId: string, captionDrafts: any) {
+  return dbUpdateJob(jobId, { caption_drafts: captionDrafts });
+}
+
+export async function dbSetJobTextOverlays(jobId: string, textOverlays: any) {
+  return dbUpdateJob(jobId, { text_overlays: textOverlays });
+}
+
+export async function dbSetJobReviewReady(jobId: string, reviewReady: boolean) {
+  return dbUpdateJob(jobId, { review_ready: reviewReady });
+}

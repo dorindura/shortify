@@ -1,4 +1,3 @@
-// src/server/video/caption.ts
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
@@ -41,6 +40,37 @@ type WhisperVerboseResponse = {
   segments: WhisperSegment[];
 };
 
+export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+
+export type CaptionDraftWord = {
+  text: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type CaptionDraftChunk = {
+  id: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  words?: CaptionDraftWord[];
+};
+
+export type CaptionDraftClip = {
+  clipIndex: number;
+  chunks: CaptionDraftChunk[];
+};
+
+const DEFAULT_FONT = "Inter";
+
+// ===== Styling knobs =====
+const CHUNK_SIZE = 4;
+const LINE_FADE_IN_MS = 40;
+const LINE_FADE_OUT_MS = 80;
+const KARAOKE_POP_SCALE = 118;
+const KARAOKE_POP_IN_MS = 70;
+const KARAOKE_POP_OUT_MS = 80;
+
 // Helpers
 function secondsToAssTime(sec: number): string {
   if (sec < 0) sec = 0;
@@ -55,28 +85,42 @@ function secondsToAssTime(sec: number): string {
   return `${hours}:${pad2(minutes)}:${pad2(seconds)}.${pad2c(centiseconds)}`;
 }
 
-type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+function synthesizeDraftWordsFromChunkText(chunk: CaptionDraftChunk): CaptionDraftWord[] {
+  const raw = normalizeText(chunk.text || "");
+  if (!raw) return [];
 
-const DEFAULT_FONT = "Inter"; // you’ll ship this font in public/fonts
+  const tokens = raw.split(" ").filter(Boolean);
+  if (!tokens.length) return [];
 
-// ===== Premium styling knobs (SAFE) =====
-const CHUNK_SIZE = 4;
+  const totalDur = Math.max(chunk.endSec - chunk.startSec, 0.2);
+  const perWord = totalDur / tokens.length;
 
-// Fade is subtle; remove if you want it 100% static
-const LINE_FADE_IN_MS = 40;
-const LINE_FADE_OUT_MS = 80;
+  return tokens.map((token, index) => {
+    const startSec = chunk.startSec + index * perWord;
+    const endSec =
+      index === tokens.length - 1 ? chunk.endSec : chunk.startSec + (index + 1) * perWord;
 
-// Karaoke “current word pop”
-const KARAOKE_POP_SCALE = 118; // 112–122 usually looks best
-const KARAOKE_POP_IN_MS = 70; // how fast it pops in
-const KARAOKE_POP_OUT_MS = 80; // how fast it returns
+    return {
+      text: token,
+      startSec,
+      endSec,
+    };
+  });
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function normalizeText(raw: string): string {
+  return (raw ?? "").replace(/\s+/g, " ").trim();
+}
+
+function safeAssText(raw: string): string {
+  return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/\s+/g, " ").trim();
+}
+
 function buildAssHeader(style: CaptionStyle, fontName = DEFAULT_FONT): string {
-  // 1080x1920 for vertical
   const playResX = 1080;
   const playResY = 1920;
 
@@ -101,8 +145,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
-  // NOTE: ASS color order is &HAABBGGRR&
-  // PrimaryColour is the base text. SecondaryColour is used by karaoke fills.
   const base = {
     Name: "Default",
     Fontname: fontName,
@@ -130,28 +172,27 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
   };
 
   if (style === "subtle") {
-    // Clean + readable + low noise
     return (
       "Style: " +
       [
         base.Name,
         base.Fontname,
         52,
-        "&H00FFFFFF&", // white
         "&H00FFFFFF&",
-        "&H99000000&", // softer outline
+        "&H00FFFFFF&",
+        "&H99000000&",
         "&H00000000&",
         0,
         0,
         0,
-        0, // Bold off
+        0,
         base.ScaleX,
         base.ScaleY,
         0,
         0,
         1,
-        3, // Outline
-        2, // Shadow
+        3,
+        2,
         2,
         base.MarginL,
         base.MarginR,
@@ -162,28 +203,27 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
   }
 
   if (style === "boldYellow") {
-    // “Shorts” look: bigger, bold, strong outline & shadow
     return (
       "Style: " +
       [
         base.Name,
         base.Fontname,
-        64, // bigger
-        "&H0000FFFF&", // yellow
+        64,
+        "&H0000FFFF&",
         "&H00FFFFFF&",
-        "&HEE000000&", // strong outline
+        "&HEE000000&",
         "&H00000000&",
         1,
         0,
         0,
-        0, // Bold on
+        0,
         base.ScaleX,
         base.ScaleY,
         0,
         0,
         1,
-        7, // thicker outline
-        4, // stronger shadow
+        7,
+        4,
         2,
         base.MarginL,
         base.MarginR,
@@ -193,17 +233,15 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
     );
   }
 
-  // karaoke
-  // base white + karaoke fill yellow, clean outline, small shadow
   return (
     "Style: " +
     [
       "Default",
       fontName,
-      74, // a bit bigger
-      "&H00FFFFFF&", // white
-      "&H00FFD200&", // yellow fill (your original)
-      "&HDD000000&", // outline
+      74,
+      "&H00FFFFFF&",
+      "&H00FFD200&",
+      "&HDD000000&",
       "&H00000000&",
       1,
       0,
@@ -214,8 +252,8 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
       0,
       0,
       1,
-      4, // slightly thicker outline
-      2, // shadow for readability
+      4,
+      2,
       2,
       80,
       80,
@@ -225,12 +263,100 @@ function buildAssStyleLine(style: CaptionStyle, fontName: string): string {
   );
 }
 
+function lineFade(): string {
+  return `{\\fad(${LINE_FADE_IN_MS},${LINE_FADE_OUT_MS})}`;
+}
+
+async function runCmd(cmd: string, args: string[], logPrefix: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    let stderr = "";
+
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+
+    proc.on("error", reject);
+
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else {
+        reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
+      }
+    });
+  });
+}
+
+async function extractTinyAudioForWhisper(videoPath: string): Promise<string> {
+  const AUDIO_DIR = path.join(process.cwd(), "tmp", "audio");
+  await ensureDir(AUDIO_DIR);
+
+  const outPath = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
+
+  const args = [
+    "-y",
+    "-i",
+    videoPath,
+    "-map",
+    "0:a:0?",
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    "16000",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "24k",
+    outPath,
+  ];
+
+  await runCmd("ffmpeg", args, "extractTinyAudioForWhisper");
+  await fsp.access(outPath);
+
+  const stat = await fsp.stat(outPath);
+
+  if (stat.size < 1024) {
+    throw new Error("No audio track or extracted audio too small for Whisper");
+  }
+
+  const MAX_BYTES = 24 * 1024 * 1024;
+
+  if (stat.size > MAX_BYTES) {
+    const outPath2 = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
+    const args2 = [
+      "-y",
+      "-i",
+      videoPath,
+      "-map",
+      "0:a:0?",
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "16k",
+      outPath2,
+    ];
+
+    await runCmd("ffmpeg", args2, "extractTinyAudioForWhisper_16k");
+    await fsp.access(outPath2);
+    await fsp.unlink(outPath).catch(() => {});
+    return outPath2;
+  }
+
+  return outPath;
+}
+
 /**
  * If Whisper didn't give us word-level timestamps,
  * fabricate them evenly across the segment.
  */
 function synthesizeWordsFromSegment(seg: WhisperSegment): WhisperWord[] {
-  const raw = (seg.text || "").replace(/\s+/g, " ").trim();
+  const raw = normalizeText(seg.text || "");
   if (!raw) return [];
 
   const tokens = raw.split(" ").filter(Boolean);
@@ -252,131 +378,79 @@ function synthesizeWordsFromSegment(seg: WhisperSegment): WhisperWord[] {
   return words;
 }
 
-function safeAssText(raw: string): string {
-  // Keep it light; do NOT escape backslashes because karaoke tags rely on them.
-  // Only normalize whitespace/newlines.
-  return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/\s+/g, " ").trim();
-}
+function chunkWords(words: WhisperWord[], chunkSize = CHUNK_SIZE): WhisperWord[][] {
+  const chunks: WhisperWord[][] = [];
 
-async function runCmd(
-  cmd: string,
-  args: string[],
-  logPrefix: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args);
-    let stderr = "";
-
-    proc.stderr.on("data", (d) => (stderr += d.toString()));
-    proc.on("error", reject);
-
-    proc.on("close", (code) => {
-      if (code === 0) resolve();
-      else {reject(
-          new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`),
-        );}
-    });
-  });
-}
-
-async function extractTinyAudioForWhisper(videoPath: string): Promise<string> {
-  const AUDIO_DIR = path.join(process.cwd(), "tmp", "audio");
-  await ensureDir(AUDIO_DIR);
-
-  const outPath = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
-
-  // IMPORTANT: mono + 16k + low bitrate => stays under 25MB
-  const args = [
-    "-y",
-    "-i",
-    videoPath,
-    "-map",
-    "0:a:0?",
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-c:a",
-    "libmp3lame",
-    "-b:a",
-    "24k", // 👈 safe; poți urca la 32k dacă vrei, dar 24k e cel mai “safe”
-    outPath,
-  ];
-
-  await runCmd("ffmpeg", args, "extractTinyAudioForWhisper");
-  await fsp.access(outPath);
-
-  // Guard: OpenAI limit ~25MB => keep some headroom
-  const stat = await fsp.stat(outPath);
-
-  if (stat.size < 1024) {
-    throw new Error("No audio track or extracted audio too small for Whisper");
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const group = words.slice(i, i + chunkSize);
+    if (group.length) chunks.push(group);
   }
 
-  const MAX_BYTES = 24 * 1024 * 1024;
-
-  if (stat.size > MAX_BYTES) {
-    // Dacă tot e mare, mai încearcă o dată și mai mic
-    const outPath2 = path.join(AUDIO_DIR, `${randomUUID()}.mp3`);
-    const args2 = [
-      "-y",
-      "-i",
-      videoPath,
-      "-map",
-      "0:a:0?",
-      "-vn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-c:a",
-      "libmp3lame",
-      "-b:a",
-      "16k",
-      outPath2,
-    ];
-    await runCmd("ffmpeg", args2, "extractTinyAudioForWhisper_16k");
-    await fsp.access(outPath2);
-    await fsp.unlink(outPath).catch(() => {});
-    return outPath2;
-  }
-
-  return outPath;
+  return chunks;
 }
 
-/**
- * Build karaoke text (\k tags) for a small group of words.
- * PREMIUM: "current word pop" using \t transforms on the word's time range.
- * This DOES NOT change word order or text — only adds styling tags.
- */
-function buildKaraokeForChunk(words: WhisperWord[]): string {
+function wordsToDraftChunk(words: WhisperWord[]): CaptionDraftChunk | null {
+  if (!words.length) return null;
+
+  const normalizedWords: CaptionDraftWord[] = words
+    .map((w) => ({
+      text: normalizeText(w.word || ""),
+      startSec: w.start,
+      endSec: w.end,
+    }))
+    .filter((w) => w.text);
+
+  if (!normalizedWords.length) return null;
+
+  return {
+    id: randomUUID(),
+    startSec: normalizedWords[0].startSec,
+    endSec: normalizedWords[normalizedWords.length - 1].endSec,
+    text: normalizedWords.map((w) => w.text).join(" "),
+    words: normalizedWords,
+  };
+}
+
+function buildDraftChunksFromSegment(seg: WhisperSegment): CaptionDraftChunk[] {
+  const words = seg.words?.length ? seg.words : synthesizeWordsFromSegment(seg);
+  if (!words.length) return [];
+
+  return chunkWords(words)
+    .map(wordsToDraftChunk)
+    .filter((chunk): chunk is CaptionDraftChunk => !!chunk);
+}
+
+function buildKaraokeTextFromDraftChunk(chunk: CaptionDraftChunk): string {
+  const normalizedChunkText = normalizeText(chunk.text || "");
+  const normalizedWordsText = (chunk.words ?? []).map((w) => normalizeText(w.text)).join(" ");
+
+  const words =
+    chunk.words?.length && normalizedWordsText === normalizedChunkText
+      ? chunk.words
+      : synthesizeDraftWordsFromChunkText(chunk);
+
   let assText = "";
-  let cursorMs = 0; // relative timeline inside this Dialogue line
+  let cursorMs = 0;
 
   for (const w of words) {
-    const rawWord = safeAssText(w.word || "");
+    const rawWord = safeAssText(w.text || "");
     if (!rawWord) continue;
 
-    const durSec = Math.max(0.03, w.end - w.start);
-    const durCs = Math.max(1, Math.round(durSec * 100)); // karaoke uses centiseconds
+    const durSec = Math.max(0.03, w.endSec - w.startSec);
+    const durCs = Math.max(1, Math.round(durSec * 100));
     const durMs = durCs * 10;
 
     const wordStartMs = cursorMs;
     const wordEndMs = cursorMs + durMs;
 
-    // Ensure transform windows make sense even for very short words
     const popInEnd = Math.min(wordStartMs + KARAOKE_POP_IN_MS, wordEndMs);
     const popOutStart = Math.max(wordEndMs - KARAOKE_POP_OUT_MS, wordStartMs);
-
     const popScale = clamp(KARAOKE_POP_SCALE, 105, 140);
 
     if (assText) assText += " ";
 
-    // We keep \k EXACT. We add transforms for just this word:
-    // - Pop in early, pop out near the end of that word.
-    // Tags scope to subsequent text, so we reset scale immediately after the word.
-    assText += `{\\k${durCs}}` +
+    assText +=
+      `{\\k${durCs}}` +
       `{\\t(${wordStartMs},${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
       `\\t(${popOutStart},${wordEndMs},\\fscx100\\fscy100)}` +
       `${rawWord}` +
@@ -388,88 +462,33 @@ function buildKaraokeForChunk(words: WhisperWord[]): string {
   return assText.trim();
 }
 
-/**
- * Split the segment into multiple chunks (max 4 words per chunk),
- * each with its own time window [start, end] based on word timestamps.
- */
-function buildKaraokeChunksFromSegment(
-  seg: WhisperSegment,
-): { start: number; end: number; text: string }[] {
-  const words = seg.words && seg.words.length > 0
-    ? seg.words
-    : synthesizeWordsFromSegment(seg);
-  if (!words.length) return [];
-
-  const chunks: { start: number; end: number; text: string }[] = [];
-
-  for (let i = 0; i < words.length; i += CHUNK_SIZE) {
-    const group = words.slice(i, i + CHUNK_SIZE);
-    if (!group.length) continue;
-
-    const start = group[0].start;
-    const end = group[group.length - 1].end;
-    const text = buildKaraokeForChunk(group);
-
-    if (!text.trim()) continue;
-    chunks.push({ start, end, text });
-  }
-
-  return chunks;
-}
-
-function buildPlainChunksFromSegment(
-  seg: WhisperSegment,
-): { start: number; end: number; text: string }[] {
-  const words = seg.words?.length ? seg.words : synthesizeWordsFromSegment(seg);
-  if (!words.length) return [];
-
-  const chunks: { start: number; end: number; text: string }[] = [];
-
-  for (let i = 0; i < words.length; i += CHUNK_SIZE) {
-    const group = words.slice(i, i + CHUNK_SIZE);
-    const start = group[0].start;
-    const end = group[group.length - 1].end;
-    const text = group
-      .map((w) => safeAssText(w.word || ""))
-      .filter(Boolean)
-      .join(" ");
-    if (text) chunks.push({ start, end, text });
-  }
-
-  return chunks;
-}
-
 function applyInlineStyle(text: string, style: CaptionStyle) {
-  // IMPORTANT: only visuals; don't change wording.
-  // Avoid "reset to white" at the end — it can cause weirdness across renderers.
   if (style === "boldYellow") {
-    // extra punch: thick outline/shadow + keep yellow
     return `{\\b1\\bord7\\shad4\\c&H0000FFFF&}${text}`;
   }
+
   if (style === "subtle") {
-    // clean white with soft outline/shadow
     return `{\\b0\\bord3\\shad2\\c&H00FFFFFF&}${text}`;
   }
-  return text; // karaoke already contains \k + transforms
+
+  return text;
 }
 
-function lineFade(): string {
-  // subtle, safe “premium” motion
-  return `{\\fad(${LINE_FADE_IN_MS},${LINE_FADE_OUT_MS})}`;
+function buildDialogueTextFromDraftChunk(
+  chunk: CaptionDraftChunk,
+  captionStyle: CaptionStyle,
+): string {
+  if (captionStyle === "karaoke") {
+    return `${lineFade()}${buildKaraokeTextFromDraftChunk(chunk)}`;
+  }
+
+  return `${lineFade()}${applyInlineStyle(safeAssText(chunk.text), captionStyle)}`;
 }
 
-/**
- * Transcribe a clip and save a karaoke-style ASS file
- * with small 3–4 word chunks instead of big paragraphs.
- */
-export async function transcribeClipToAss(
+async function transcribeClipToDraft(
   clipPath: string,
-  outAssPath: string,
-  captionStyle: CaptionStyle = "karaoke",
-  fontName: string = DEFAULT_FONT,
-): Promise<string> {
-  await ensureDir(SUBS_DIR);
-
+  clipIndex: number,
+): Promise<CaptionDraftClip> {
   const audioPath = await extractTinyAudioForWhisper(clipPath);
 
   try {
@@ -481,81 +500,77 @@ export async function transcribeClipToAss(
     })) as unknown as WhisperVerboseResponse;
 
     if (!resp.segments || resp.segments.length === 0) {
-      console.warn(
-        "[transcribeClipToAss] No segments returned – writing empty ASS with header only",
-      );
-      await fsp.writeFile(
-        outAssPath,
-        buildAssHeader(captionStyle, fontName),
-        "utf8",
-      );
-      return outAssPath;
+      return {
+        clipIndex,
+        chunks: [],
+      };
     }
 
-    console.log("[transcribeClipToAss] Segments count:", resp.segments.length);
+    const chunks = resp.segments.flatMap((seg) => buildDraftChunksFromSegment(seg));
 
-    let ass = buildAssHeader(captionStyle, fontName);
-
-    for (const seg of resp.segments) {
-      const chunks = captionStyle === "karaoke"
-        ? buildKaraokeChunksFromSegment(seg)
-        : buildPlainChunksFromSegment(seg);
-
-      if (!chunks.length) continue;
-
-      for (const chunk of chunks) {
-        const start = secondsToAssTime(chunk.start);
-        const end = secondsToAssTime(chunk.end);
-
-        const baseText = safeAssText(chunk.text);
-
-        const styledText = captionStyle === "karaoke"
-          ? baseText // already has tags + transforms
-          : applyInlineStyle(baseText, captionStyle);
-
-        const text = `${lineFade()}${styledText}`;
-
-        const dialogue = [
-          "Dialogue: 0",
-          start,
-          end,
-          "Default",
-          "",
-          "0",
-          "0",
-          "0",
-          "",
-          text,
-        ].join(
-          ",",
-        );
-        ass += dialogue + "\n";
-      }
-    }
-
-    await fsp.writeFile(outAssPath, ass, "utf8");
-    console.log("[transcribeClipToAss] Wrote ASS:", outAssPath);
-    return outAssPath;
-  } catch (err) {
-    console.error("[transcribeClipToAss] Error:", err);
-
-    await ensureDir(path.dirname(outAssPath));
-    await fsp.writeFile(
-      outAssPath,
-      buildAssHeader(captionStyle, fontName),
-      "utf8",
-    );
-    console.log("[transcribeClipToAss] Wrote empty ASS fallback:", outAssPath);
-    return outAssPath;
+    return {
+      clipIndex,
+      chunks,
+    };
   } finally {
     await fsp.unlink(audioPath).catch(() => {});
   }
 }
 
+function draftClipToAss(
+  draftClip: CaptionDraftClip,
+  captionStyle: CaptionStyle,
+  fontName: string,
+): string {
+  let ass = buildAssHeader(captionStyle, fontName);
+
+  for (const chunk of draftClip.chunks) {
+    const start = secondsToAssTime(chunk.startSec);
+    const end = secondsToAssTime(chunk.endSec);
+    const text = buildDialogueTextFromDraftChunk(chunk, captionStyle);
+
+    const dialogue = ["Dialogue: 0", start, end, "Default", "", "0", "0", "0", "", text].join(",");
+
+    ass += dialogue + "\n";
+  }
+
+  return ass;
+}
+
 /**
- * Generate subtitle files (ASS) for all clips.
+ * NEW:
+ * Generate JSON drafts that the user can edit later.
  */
-export async function generateSubtitlesForClips(
+export async function generateCaptionDraftsForClips(clips: string[]): Promise<CaptionDraftClip[]> {
+  await ensureDir(SUBS_DIR);
+
+  const drafts: CaptionDraftClip[] = [];
+
+  for (let i = 0; i < clips.length; i++) {
+    const clipPath = clips[i];
+
+    try {
+      const draft = await transcribeClipToDraft(clipPath, i);
+      drafts.push(draft);
+    } catch (err) {
+      console.error("[generateCaptionDraftsForClips] Failed for clip:", clipPath, err);
+
+      drafts.push({
+        clipIndex: i,
+        chunks: [],
+      });
+    }
+  }
+
+  return drafts;
+}
+
+/**
+ * NEW:
+ * Build ASS files from already existing drafts.
+ */
+export async function generateSubtitlesFromDrafts(
+  drafts: CaptionDraftClip[],
   clips: string[],
   options?: { captionStyle?: CaptionStyle; fontName?: string },
 ): Promise<string[]> {
@@ -566,17 +581,33 @@ export async function generateSubtitlesForClips(
 
   const subtitleFiles: string[] = [];
 
-  for (const clipPath of clips) {
+  for (let i = 0; i < clips.length; i++) {
+    const clipPath = clips[i];
     const base = path.basename(clipPath, path.extname(clipPath));
     const assPath = path.join(SUBS_DIR, `${base}.ass`);
-    const outPath = await transcribeClipToAss(
-      clipPath,
-      assPath,
-      captionStyle,
-      fontName,
-    );
-    subtitleFiles.push(outPath);
+
+    const draft = drafts.find((d) => d.clipIndex === i) ?? {
+      clipIndex: i,
+      chunks: [],
+    };
+
+    const ass = draftClipToAss(draft, captionStyle, fontName);
+    await fsp.writeFile(assPath, ass, "utf8");
+    subtitleFiles.push(assPath);
   }
 
   return subtitleFiles;
+}
+
+/**
+ * COMPAT:
+ * Old flow still works.
+ * Internally: draft -> ass
+ */
+export async function generateSubtitlesForClips(
+  clips: string[],
+  options?: { captionStyle?: CaptionStyle; fontName?: string },
+): Promise<string[]> {
+  const drafts = await generateCaptionDraftsForClips(clips);
+  return generateSubtitlesFromDrafts(drafts, clips, options);
 }

@@ -12,6 +12,25 @@ const PUBLIC_THUMBS_DIR = path.join(process.cwd(), "public", "thumbs");
 
 const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
 
+type TextOverlayPosition = "top" | "center" | "bottom";
+
+type TextOverlay = {
+  id: string;
+  clipIndex: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: TextOverlayPosition;
+};
+
+type RenderOptions = {
+  aspect?: JobAspect;
+  style?: CaptionStyle;
+  captionsEnabled?: boolean;
+  smartCrop?: (SmartCropBox | null)[];
+  textOverlays?: TextOverlay[];
+};
+
 async function ensureDir(dir: string) {
   try {
     await fsPromises.mkdir(dir, { recursive: true });
@@ -44,12 +63,82 @@ function escapeForSubtitles(pathStr: string): string {
     .replace(/'/g, "\\'");
 }
 
-type RenderOptions = {
-  aspect?: JobAspect;
-  style?: CaptionStyle;
-  captionsEnabled?: boolean;
-  smartCrop?: (SmartCropBox | null)[];
-};
+function escapeDrawtextText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/,/g, "\\,")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/%/g, "\\%")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}")
+    .replace(/\#/g, "\\#")
+    .replace(/\;/g, "\\;")
+    .replace(/\r?\n/g, " ");
+}
+
+function normalizeOverlayText(text: string): string {
+  return (text ?? "").replace(/\s+/g, " ").trim();
+}
+
+function getOverlayY(position: TextOverlayPosition): string {
+  if (position === "top") return "220";
+  if (position === "center") return "(h-text_h)/2";
+  return "h-text_h-420";
+}
+
+function buildOverlayDrawtextFilters(overlays: TextOverlay[]): string[] {
+  if (!overlays.length) return [];
+
+  const fontPath = path.join(
+    process.cwd(),
+    "public",
+    "fonts",
+    "Inter-SemiBold.ttf",
+  );
+
+  return overlays
+    .filter((overlay) => {
+      const text = normalizeOverlayText(overlay.text);
+      return (
+        !!text &&
+        Number.isFinite(overlay.startSec) &&
+        Number.isFinite(overlay.endSec) &&
+        overlay.endSec > overlay.startSec
+      );
+    })
+    .map((overlay) => {
+      const text = escapeDrawtextText(normalizeOverlayText(overlay.text));
+      const y = getOverlayY(overlay.position);
+
+      return (
+        `drawtext=` +
+        `fontfile='${fontPath}':` +
+        `text='${text}':` +
+        `fontcolor=white:` +
+        `fontsize=64:` +
+        `line_spacing=10:` +
+        `x=(w-text_w)/2:` +
+        `y=${y}:` +
+        `borderw=6:` +
+        `bordercolor=black@0.88:` +
+        `shadowx=0:` +
+        `shadowy=4:` +
+        `shadowcolor=black@0.55:` +
+        `box=1:` +
+        `boxcolor=black@0.20:` +
+        `boxborderw=18:` +
+        `fix_bounds=true:` +
+        `enable='between(t\\,${overlay.startSec.toFixed(3)}\\,${
+          overlay.endSec.toFixed(3)
+        })'`
+      );
+    });
+}
 
 function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
   if (!segments.length) {
@@ -78,7 +167,7 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
     const next = sorted[i + 1];
 
     if (Math.abs(next.centerXNorm - prev.centerXNorm) < MIN_MOVE) {
-      continue; // ignore micro movement
+      continue;
     }
 
     const x0 = exprForCx(prev.centerXNorm);
@@ -128,7 +217,6 @@ export async function renderShortsWithSubtitles(
     const publicVideoUrl = `/shorts/${id}.mp4`;
     const publicThumbUrl = `/thumbs/${id}.jpg`;
 
-    // subtitles filter only if enabled + path exists
     let subtitlesFilter: string | null = null;
     if (captionsEnabled && subsPath) {
       const escapedSubs = escapeForSubtitles(subsPath);
@@ -153,7 +241,6 @@ export async function renderShortsWithSubtitles(
 
       if (cropInfo && cropInfo.segments && cropInfo.segments.length > 0) {
         const xExpr = buildCropXExprForSegments(cropInfo.segments);
-
         filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
       } else {
         filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
@@ -164,6 +251,15 @@ export async function renderShortsWithSubtitles(
 
     if (subtitlesFilter) {
       filters.push(subtitlesFilter);
+    }
+
+    const overlaysForClip = (opts?.textOverlays ?? []).filter(
+      (overlay) => overlay.clipIndex === i,
+    );
+
+    const overlayFilters = buildOverlayDrawtextFilters(overlaysForClip);
+    if (overlayFilters.length) {
+      filters.push(...overlayFilters);
     }
 
     const filter = filters.join(",");
@@ -197,7 +293,6 @@ export async function renderShortsWithSubtitles(
 
     await runFfmpeg(ffArgs, `renderShortsWithSubtitles:${id}`);
 
-    // Thumbnail from final cropped video
     await runFfmpeg(
       [
         "-y",

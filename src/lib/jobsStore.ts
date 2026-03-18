@@ -31,6 +31,36 @@ export type ShortsConfig = {
   customRanges?: ShortsCustomRange[];
 };
 
+export type CaptionDraftWord = {
+  text: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type CaptionDraftChunk = {
+  id: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  words?: CaptionDraftWord[];
+};
+
+export type CaptionDraftClip = {
+  clipIndex: number;
+  chunks: CaptionDraftChunk[];
+};
+
+export type TextOverlayPosition = "top" | "center" | "bottom";
+
+export type TextOverlay = {
+  id: string;
+  clipIndex: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: TextOverlayPosition;
+};
+
 export type QuoteReelMeta = {
   quote?: string;
   author?: string;
@@ -78,6 +108,10 @@ export type Job = {
   quotePrompt?: string;
   quoteReelMeta?: QuoteReelMeta;
   shortsConfig?: ShortsConfig;
+
+  captionDrafts?: CaptionDraftClip[];
+  textOverlays?: TextOverlay[];
+  reviewReady?: boolean;
 };
 
 const jobs: Job[] = [];
