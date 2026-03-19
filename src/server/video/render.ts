@@ -185,6 +185,97 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
   return raw;
 }
 
+export async function renderPreviewClips(
+  clips: string[],
+  opts?: {
+    aspect?: JobAspect;
+    smartCrop?: (SmartCropBox | null)[];
+  },
+): Promise<string[]> {
+  await ensureDir(PUBLIC_SHORTS_DIR);
+
+  const aspect = opts?.aspect ?? "horizontal";
+  const previewPaths: string[] = [];
+
+  for (let i = 0; i < clips.length; i++) {
+    const clipPath = clips[i];
+    const id = randomUUID();
+    const outVideoPath = path.join(PUBLIC_SHORTS_DIR, `${id}-preview.mp4`);
+
+    const filters: string[] = [];
+
+    if (aspect === "verticalLetterbox") {
+      filters.push(
+        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+      );
+    } else if (aspect === "vertical") {
+      const cropInfo = opts?.smartCrop?.[i] ?? null;
+
+      if (cropInfo?.segments?.length) {
+        const xExpr = buildCropXExprForSegments(cropInfo.segments);
+        filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
+      } else {
+        filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
+      }
+
+      filters.push("scale=1080:1920:flags=bicubic");
+    }
+
+    const ffArgs = filters.length > 0
+      ? [
+        "-y",
+        "-i",
+        clipPath,
+        "-vf",
+        filters.join(","),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "superfast",
+        "-crf",
+        "24",
+        "-maxrate",
+        "4M",
+        "-bufsize",
+        "7M",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-threads",
+        ffThreads,
+        "-movflags",
+        "+faststart",
+        outVideoPath,
+      ]
+      : [
+        "-y",
+        "-i",
+        clipPath,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "superfast",
+        "-crf",
+        "24",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-threads",
+        ffThreads,
+        "-movflags",
+        "+faststart",
+        outVideoPath,
+      ];
+
+    await runFfmpeg(ffArgs, `renderPreviewClips:${id}`);
+    previewPaths.push(outVideoPath);
+  }
+
+  return previewPaths;
+}
+
 export async function renderShortsWithSubtitles(
   clips: string[],
   subtitleFiles: string[],

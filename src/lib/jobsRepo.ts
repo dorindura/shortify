@@ -16,6 +16,7 @@ export async function createJob(job: Job, sb: SupabaseClient) {
     captions_enabled: job.captionsEnabled,
     caption_style: job.captionStyle,
     clips: job.clips,
+    preview_clips: job.previewClips ?? null,
     captioned_clips: job.captionedClips,
     captioned_thumbs: job.captionedThumbs,
     job_goal: job.jobGoal ?? "shorts",
@@ -26,6 +27,7 @@ export async function createJob(job: Job, sb: SupabaseClient) {
     caption_drafts: job.captionDrafts ?? null,
     text_overlays: job.textOverlays ?? null,
     review_ready: job.reviewReady ?? false,
+    smart_crops: job.smartCrops ?? null,
     created_at: job.createdAt,
     updated_at: job.updatedAt,
   });
@@ -57,6 +59,7 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
     captionsEnabled: row.captions_enabled,
     captionStyle: row.caption_style,
     clips: row.clips ?? [],
+    previewClips: row.previewClips ?? [],
     captionedClips: row.captioned_clips ?? [],
     captionedThumbs: row.captioned_thumbs ?? [],
     createdAt: row.created_at,
@@ -69,5 +72,6 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
     captionDrafts: row.caption_drafts ?? undefined,
     textOverlays: row.text_overlays ?? undefined,
     reviewReady: row.review_ready ?? false,
+    smartCrops: row.smart_crops ?? undefined,
   }));
 }

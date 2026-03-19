@@ -38,7 +38,10 @@ export async function dbSetJobCaptionedResults(
   clipUrls: string[],
   thumbUrls: string[],
 ) {
-  return dbUpdateJob(jobId, { captioned_clips: clipUrls, captioned_thumbs: thumbUrls });
+  return dbUpdateJob(jobId, {
+    captioned_clips: clipUrls,
+    captioned_thumbs: thumbUrls,
+  });
 }
 
 export async function dbUpdateJobQuoteMeta(jobId: string, quoteReelMeta: any) {
@@ -65,4 +68,12 @@ export async function dbSetJobTextOverlays(jobId: string, textOverlays: any) {
 
 export async function dbSetJobReviewReady(jobId: string, reviewReady: boolean) {
   return dbUpdateJob(jobId, { review_ready: reviewReady });
+}
+
+export async function dbSetJobSmartCrops(jobId: string, smartCrops: any) {
+  return dbUpdateJob(jobId, { smart_crops: smartCrops });
+}
+
+export async function dbSetJobPreviewClips(jobId: string, previewClips: string[]) {
+  return dbUpdateJob(jobId, { preview_clips: previewClips });
 }

@@ -81,6 +81,16 @@ export type QuoteReelMeta = {
   };
 };
 
+export type SmartCropSegment = {
+  tStart: number;
+  tEnd: number;
+  centerXNorm: number;
+};
+
+export type SmartCropBox = {
+  segments: SmartCropSegment[];
+};
+
 export type Job = {
   id: string;
   ownerId: string;
@@ -96,6 +106,7 @@ export type Job = {
   captionStyle?: CaptionStyle;
 
   clips?: string[];
+  previewClips?: string[];
   captionedClips?: string[];
   captionedThumbs?: string[];
   stage?: JobStage;
@@ -112,6 +123,8 @@ export type Job = {
   captionDrafts?: CaptionDraftClip[];
   textOverlays?: TextOverlay[];
   reviewReady?: boolean;
+
+  smartCrops?: (SmartCropBox | null)[];
 };
 
 const jobs: Job[] = [];

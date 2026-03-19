@@ -4,7 +4,9 @@ import {
   dbSetJobCaptionDrafts,
   dbSetJobCaptionedResults,
   dbSetJobClips,
+  dbSetJobPreviewClips,
   dbSetJobReviewReady,
+  dbSetJobSmartCrops,
   dbSetJobTextOverlays,
   dbUpdateJobStage,
   dbUpdateJobStatus,
@@ -18,7 +20,7 @@ import {
   createClipsFromVideo,
   createClipsFromVideoUsingRanges,
 } from "@server/video/clip";
-import { renderShortsWithSubtitles } from "@server/video/render";
+import { renderPreviewClips, renderShortsWithSubtitles } from "@server/video/render";
 import {
   analyzeTranscriptForClips,
   analyzeTranscriptForSummary,
@@ -233,9 +235,23 @@ export async function processJob(jobId: string) {
     await dbSetJobCaptionDrafts(jobId, captionDrafts);
     await dbSetJobTextOverlays(jobId, []);
 
+    // --- FACE-AWARE SMART CROP (NEW) ---
+    await dbUpdateJobStage(jobId, "clipping", 60);
+    const smartCrops = await analyzeFaceCropsForClips(clips, energyByClip);
+    await dbSetJobSmartCrops(jobId, smartCrops);
+
     // Shorts stop here and wait for review/edit
     if (jobGoal === "shorts") {
+      await dbUpdateJobStage(jobId, "rendering", 70);
+
+      const previewClips = await renderPreviewClips(clips, {
+        aspect,
+        smartCrop: smartCrops,
+      });
+
+      await dbSetJobPreviewClips(jobId, previewClips);
       await dbSetJobReviewReady(jobId, true);
+
       await dbUpdateJobStage(jobId, "finished", 100);
       await dbUpdateJobStatus(jobId, "done");
 
@@ -258,10 +274,6 @@ export async function processJob(jobId: string) {
     const subtitlePaths: string[] = Array.isArray(subtitleFiles)
       ? subtitleFiles.map(subtitleToPath).filter(Boolean)
       : [];
-
-    // --- FACE-AWARE SMART CROP (NEW) ---
-    await dbUpdateJobStage(jobId, "clipping", 60);
-    const smartCrops = await analyzeFaceCropsForClips(clips, energyByClip);
 
     // --- RENDER (WITH OR WITHOUT SUBTITLES) ---
     await dbUpdateJobStage(jobId, "rendering", 70);

@@ -21,6 +21,9 @@ type CaptionDraftClip = {
 
 type Props = {
   drafts: CaptionDraftClip[];
+  selectedClipIndex: number;
+  onSelectClip: (clipIndex: number) => void;
+  onSeekToChunk?: (time: number) => void;
   onChange: (next: CaptionDraftClip[]) => void;
 };
 
@@ -32,23 +35,28 @@ function formatSeconds(sec: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export default function CaptionDraftEditor({ drafts, onChange }: Props) {
+export default function CaptionDraftEditor({
+  drafts,
+  selectedClipIndex,
+  onSelectClip,
+  onSeekToChunk,
+  onChange,
+}: Props) {
   function updateChunkText(clipIndex: number, chunkId: string, value: string) {
     onChange(
       drafts.map((clip) =>
         clip.clipIndex !== clipIndex ? clip : {
           ...clip,
           chunks: clip.chunks.map((chunk) =>
-            chunk.id !== chunkId ? chunk : {
-              ...chunk,
-              text: value,
-              words: undefined,
-            }
+            chunk.id !== chunkId ? chunk : { ...chunk, text: value }
           ),
         }
       ),
     );
   }
+
+  const currentClip =
+    drafts.find((clip) => clip.clipIndex === selectedClipIndex) ?? null;
 
   return (
     <div className="space-y-4">
@@ -58,22 +66,39 @@ export default function CaptionDraftEditor({ drafts, onChange }: Props) {
         </div>
       )}
 
-      {drafts.map((clip) => (
-        <div
-          key={clip.clipIndex}
-          className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4"
-        >
+      {drafts.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {drafts.map((clip) => (
+            <button
+              key={clip.clipIndex}
+              type="button"
+              onClick={() => onSelectClip(clip.clipIndex)}
+              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+                selectedClipIndex === clip.clipIndex
+                  ? "border-sky-500 bg-sky-500/15 text-sky-300"
+                  : "border-slate-700 bg-slate-900/70 text-slate-300 hover:border-sky-500/60"
+              }`}
+            >
+              Clip {clip.clipIndex + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {currentClip && (
+        <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-100">
-              Clip {clip.clipIndex + 1}
+              Clip {currentClip.clipIndex + 1}
             </div>
             <div className="text-[10px] text-slate-500">
-              {clip.chunks.length} chunk{clip.chunks.length !== 1 ? "s" : ""}
+              {currentClip.chunks.length}{" "}
+              chunk{currentClip.chunks.length !== 1 ? "s" : ""}
             </div>
           </div>
 
           <div className="space-y-3">
-            {clip.chunks.map((chunk, idx) => (
+            {currentClip.chunks.map((chunk, idx) => (
               <div
                 key={chunk.id}
                 className="rounded-xl border border-slate-800/80 bg-slate-950/90 p-3"
@@ -82,16 +107,25 @@ export default function CaptionDraftEditor({ drafts, onChange }: Props) {
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Chunk {idx + 1}
                   </div>
-                  <div className="text-[10px] text-slate-500">
+
+                  <button
+                    type="button"
+                    onClick={() => onSeekToChunk?.(chunk.startSec)}
+                    className="rounded-full border border-slate-700 px-2.5 py-1 text-[10px] text-slate-300 hover:bg-slate-900"
+                  >
                     {formatSeconds(chunk.startSec)} →{" "}
                     {formatSeconds(chunk.endSec)}
-                  </div>
+                  </button>
                 </div>
 
                 <textarea
                   value={chunk.text}
                   onChange={(e) =>
-                    updateChunkText(clip.clipIndex, chunk.id, e.target.value)}
+                    updateChunkText(
+                      currentClip.clipIndex,
+                      chunk.id,
+                      e.target.value,
+                    )}
                   rows={2}
                   className="w-full resize-y rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                 />
@@ -107,7 +141,7 @@ export default function CaptionDraftEditor({ drafts, onChange }: Props) {
             ))}
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
