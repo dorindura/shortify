@@ -9,6 +9,7 @@ type Props = {
   downloadingKey: string | null;
   onRefresh: () => Promise<void>;
   onDeleteJob: (jobId: string) => Promise<void>;
+  openReview: Job[];
   onDownload: (fileUrl: string, filename: string, key: string) => Promise<void>;
 };
 
