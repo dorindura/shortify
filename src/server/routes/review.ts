@@ -7,6 +7,7 @@ import {
   dbSetJobTextOverlays,
   dbUpdateJob,
 } from "@server/jobs/jobsDb";
+import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
 type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 type TextOverlayPosition = "top" | "center" | "bottom";
@@ -30,6 +31,8 @@ type CaptionDraftClip = {
   chunks: CaptionDraftChunk[];
 };
 
+type OverlayEmojiPlacement = "left" | "right";
+
 type TextOverlay = {
   id: string;
   clipIndex: number;
@@ -37,6 +40,8 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement: OverlayEmojiPlacement;
 };
 
 function isCaptionStyle(value: unknown): value is CaptionStyle {
@@ -51,6 +56,15 @@ function normalizeText(value: unknown) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isOverlayEmojiPlacement(value: unknown): value is OverlayEmojiPlacement {
+  return value === "left" || value === "right";
+}
+
+function isOverlayEmoji(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  return OVERLAY_EMOJIS.some((emoji) => emoji.id === value);
 }
 
 function sanitizeCaptionDrafts(input: unknown): CaptionDraftClip[] {
@@ -72,7 +86,9 @@ function sanitizeCaptionDrafts(input: unknown): CaptionDraftClip[] {
 
           if (!id) return null;
           if (!text) return null;
-          if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null;
+          if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) {
+            return null;
+          }
           if (endSec <= startSec) return null;
 
           const words = Array.isArray(chunkRaw?.words)
@@ -125,6 +141,14 @@ function sanitizeTextOverlays(input: unknown): TextOverlay[] {
       const endSec = Number(overlayRaw?.endSec);
       const position = overlayRaw?.position;
 
+      const emojiRaw = overlayRaw?.emoji;
+      const emojiPlacementRaw = overlayRaw?.emojiPlacement;
+
+      const emoji = isOverlayEmoji(emojiRaw) ? emojiRaw : null;
+      const emojiPlacement = isOverlayEmojiPlacement(emojiPlacementRaw)
+        ? emojiPlacementRaw
+        : "left";
+
       if (!id || !text) return null;
       if (!Number.isInteger(clipIndex) || clipIndex < 0) return null;
       if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null;
@@ -138,6 +162,8 @@ function sanitizeTextOverlays(input: unknown): TextOverlay[] {
         startSec,
         endSec,
         position,
+        emoji,
+        emojiPlacement,
       };
     })
     .filter(Boolean) as TextOverlay[];
@@ -163,7 +189,9 @@ export async function registerJobReviewRoute(app: FastifyInstance) {
     }
 
     if (job.job_goal !== "shorts") {
-      return reply.code(400).send({ error: "Review is available only for shorts jobs" });
+      return reply.code(400).send({
+        error: "Review is available only for shorts jobs",
+      });
     }
 
     const body = (req.body ?? {}) as any;

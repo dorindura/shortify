@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
 type CaptionDraftWord = {
   text: string;
@@ -23,6 +24,8 @@ type CaptionDraftClip = {
 
 type TextOverlayPosition = "top" | "center" | "bottom";
 
+type OverlayEmojiPlacement = "left" | "right";
+
 type TextOverlay = {
   id: string;
   clipIndex: number;
@@ -30,6 +33,8 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: OverlayEmojiPlacement;
 };
 
 type SmartCropSegment = {
@@ -59,6 +64,11 @@ function getOverlayPositionClass(position: TextOverlayPosition) {
   if (position === "top") return "top-8";
   if (position === "center") return "top-1/2 -translate-y-1/2";
   return "bottom-8";
+}
+
+function getEmojiChar(emojiId?: string | null) {
+  if (!emojiId) return null;
+  return OVERLAY_EMOJIS.find((e) => e.id === emojiId)?.char ?? null;
 }
 
 export default function ReviewVideoPreview({
@@ -156,9 +166,9 @@ export default function ReviewVideoPreview({
 
           {captionsEnabled && activeChunk?.text && (
             <div className="pointer-events-none absolute inset-x-4 bottom-16 flex justify-center">
-              <div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">
-                {activeChunk.text}
-              </div>
+              {/*<div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
+              {activeChunk.text}
+              {/*</div>*/}
             </div>
           )}
 
@@ -169,9 +179,19 @@ export default function ReviewVideoPreview({
                 overlay.position,
               )}`}
             >
-              <div className="rounded-xl bg-slate-950/65 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">
-                {overlay.text}
+              {/*<div className="rounded-xl bg-slate-950/65 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
+              <div className="flex items-center justify-center gap-2">
+                {overlay.emoji && (overlay.emojiPlacement ?? "left") === "left" && (
+                  <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
+                )}
+
+                {overlay.text && <span>{overlay.text}</span>}
+
+                {overlay.emoji && (overlay.emojiPlacement ?? "left") === "right" && (
+                  <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
+                )}
               </div>
+              {/*</div>*/}
             </div>
           ))}
         </div>

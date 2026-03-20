@@ -216,13 +216,15 @@ export default function CreateJobPanel(props: Props) {
           onChangeRange={onChangeRange}
         />
 
-        <ClipSettingsSection
-          jobGoal={jobGoal}
-          clipDurationSec={clipDurationSec}
-          setClipDurationSec={setClipDurationSec}
-          maxClips={maxClips}
-          setMaxClips={setMaxClips}
-        />
+        {selectionMode !== "custom" && (
+          <ClipSettingsSection
+            jobGoal={jobGoal}
+            clipDurationSec={clipDurationSec}
+            setClipDurationSec={setClipDurationSec}
+            maxClips={maxClips}
+            setMaxClips={setMaxClips}
+          />
+        )}
 
         <QuoteReelSection
           jobGoal={jobGoal}

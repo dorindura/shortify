@@ -1,6 +1,10 @@
 "use client";
 
+import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
+
 type TextOverlayPosition = "top" | "center" | "bottom";
+
+type OverlayEmojiPlacement = "left" | "right";
 
 type TextOverlay = {
   id: string;
@@ -9,6 +13,8 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: OverlayEmojiPlacement;
 };
 
 type Props = {
@@ -22,9 +28,7 @@ function toNumber(value: string, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export default function TextOverlayEditor(
-  { overlays, clipCount, onChange }: Props,
-) {
+export default function TextOverlayEditor({ overlays, clipCount, onChange }: Props) {
   function addOverlay() {
     onChange([
       ...overlays,
@@ -35,6 +39,8 @@ export default function TextOverlayEditor(
         startSec: 0,
         endSec: 2,
         position: "bottom",
+        emoji: null,
+        emojiPlacement: "left",
       },
     ]);
   }
@@ -44,20 +50,14 @@ export default function TextOverlayEditor(
   }
 
   function updateOverlay(id: string, patch: Partial<TextOverlay>) {
-    onChange(
-      overlays.map((
-        overlay,
-      ) => (overlay.id === id ? { ...overlay, ...patch } : overlay)),
-    );
+    onChange(overlays.map((overlay) => (overlay.id === id ? { ...overlay, ...patch } : overlay)));
   }
 
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-100">
-            Text overlays
-          </div>
+          <div className="text-sm font-semibold text-slate-100">Text overlays</div>
           <div className="text-[10px] text-slate-500">
             Optional drawtext overlays for final render
           </div>
@@ -85,9 +85,7 @@ export default function TextOverlayEditor(
             className="rounded-xl border border-slate-800/80 bg-slate-950/90 p-3"
           >
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-[11px] font-semibold text-slate-200">
-                Overlay {index + 1}
-              </div>
+              <div className="text-[11px] font-semibold text-slate-200">Overlay {index + 1}</div>
 
               <button
                 type="button"
@@ -100,36 +98,67 @@ export default function TextOverlayEditor(
 
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] font-medium text-slate-400">
-                  Text
-                </label>
+                <label className="text-[10px] font-medium text-slate-400">Text</label>
                 <input
                   type="text"
                   value={overlay.text}
-                  onChange={(e) =>
-                    updateOverlay(overlay.id, { text: e.target.value })}
+                  onChange={(e) => updateOverlay(overlay.id, { text: e.target.value })}
                   placeholder="Subscribe for more"
                   className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-medium text-slate-400">Emoji</label>
+                  <select
+                    value={overlay.emoji ?? ""}
+                    onChange={(e) =>
+                      updateOverlay(overlay.id, {
+                        emoji: e.target.value || null,
+                      })
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="">None</option>
+                    {OVERLAY_EMOJIS.map((emoji) => (
+                      <option key={emoji.id} value={emoji.id}>
+                        {emoji.char} {emoji.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-medium text-slate-400">Emoji side</label>
+                  <select
+                    value={overlay.emojiPlacement ?? "left"}
+                    onChange={(e) =>
+                      updateOverlay(overlay.id, {
+                        emojiPlacement: e.target.value as OverlayEmojiPlacement,
+                      })
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="left">Left</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-4">
                 <div>
-                  <label className="text-[10px] font-medium text-slate-400">
-                    Clip
-                  </label>
+                  <label className="text-[10px] font-medium text-slate-400">Clip</label>
                   <select
                     value={overlay.clipIndex}
                     onChange={(e) =>
                       updateOverlay(overlay.id, {
                         clipIndex: toNumber(e.target.value, 0),
-                      })}
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   >
-                    {Array.from({ length: Math.max(clipCount, 1) }).map((
-                      _,
-                      idx,
-                    ) => (
+                    {Array.from({ length: Math.max(clipCount, 1) }).map((_, idx) => (
                       <option key={idx} value={idx}>
                         Clip {idx + 1}
                       </option>
@@ -138,9 +167,7 @@ export default function TextOverlayEditor(
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-medium text-slate-400">
-                    Start
-                  </label>
+                  <label className="text-[10px] font-medium text-slate-400">Start (sec)</label>
                   <input
                     type="number"
                     min="0"
@@ -149,15 +176,14 @@ export default function TextOverlayEditor(
                     onChange={(e) =>
                       updateOverlay(overlay.id, {
                         startSec: toNumber(e.target.value, 0),
-                      })}
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-medium text-slate-400">
-                    End
-                  </label>
+                  <label className="text-[10px] font-medium text-slate-400">End (sec)</label>
                   <input
                     type="number"
                     min="0"
@@ -166,21 +192,21 @@ export default function TextOverlayEditor(
                     onChange={(e) =>
                       updateOverlay(overlay.id, {
                         endSec: toNumber(e.target.value, 0),
-                      })}
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-medium text-slate-400">
-                    Position
-                  </label>
+                  <label className="text-[10px] font-medium text-slate-400">Position</label>
                   <select
                     value={overlay.position}
                     onChange={(e) =>
                       updateOverlay(overlay.id, {
                         position: e.target.value as TextOverlayPosition,
-                      })}
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="top">Top</option>

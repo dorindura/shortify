@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { spawn } from "child_process";
 import type { CaptionStyle, JobAspect } from "@lib/jobsStore";
 import type { SmartCropBox, SmartCropSegment } from "@server/video/faceCrop";
+import { createOverlayAsset } from "@server/video/overlayAsset";
 
 const PUBLIC_SHORTS_DIR = path.join(process.cwd(), "public", "shorts");
 const PUBLIC_THUMBS_DIR = path.join(process.cwd(), "public", "thumbs");
@@ -14,6 +15,8 @@ const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
 
 type TextOverlayPosition = "top" | "center" | "bottom";
 
+type OverlayEmojiPlacement = "left" | "right";
+
 type TextOverlay = {
   id: string;
   clipIndex: number;
@@ -21,6 +24,8 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: OverlayEmojiPlacement;
 };
 
 type RenderOptions = {
@@ -61,83 +66,6 @@ function escapeForSubtitles(pathStr: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'");
-}
-
-function escapeDrawtextText(text: string): string {
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/,/g, "\\,")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
-    .replace(/%/g, "\\%")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}")
-    .replace(/\#/g, "\\#")
-    .replace(/\;/g, "\\;")
-    .replace(/\r?\n/g, " ");
-}
-
-function normalizeOverlayText(text: string): string {
-  return (text ?? "").replace(/\s+/g, " ").trim();
-}
-
-function getOverlayY(position: TextOverlayPosition): string {
-  if (position === "top") return "220";
-  if (position === "center") return "(h-text_h)/2";
-  return "h-text_h-420";
-}
-
-function buildOverlayDrawtextFilters(overlays: TextOverlay[]): string[] {
-  if (!overlays.length) return [];
-
-  const fontPath = path.join(
-    process.cwd(),
-    "public",
-    "fonts",
-    "Inter-SemiBold.ttf",
-  );
-
-  return overlays
-    .filter((overlay) => {
-      const text = normalizeOverlayText(overlay.text);
-      return (
-        !!text &&
-        Number.isFinite(overlay.startSec) &&
-        Number.isFinite(overlay.endSec) &&
-        overlay.endSec > overlay.startSec
-      );
-    })
-    .map((overlay) => {
-      const text = escapeDrawtextText(normalizeOverlayText(overlay.text));
-      const y = getOverlayY(overlay.position);
-
-      return (
-        `drawtext=` +
-        `fontfile='${fontPath}':` +
-        `text='${text}':` +
-        `fontcolor=white:` +
-        `fontsize=64:` +
-        `line_spacing=10:` +
-        `x=(w-text_w)/2:` +
-        `y=${y}:` +
-        `borderw=6:` +
-        `bordercolor=black@0.88:` +
-        `shadowx=0:` +
-        `shadowy=4:` +
-        `shadowcolor=black@0.55:` +
-        `box=1:` +
-        `boxcolor=black@0.20:` +
-        `boxborderw=18:` +
-        `fix_bounds=true:` +
-        `enable='between(t\\,${overlay.startSec.toFixed(3)}\\,${
-          overlay.endSec.toFixed(3)
-        })'`
-      );
-    });
 }
 
 function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
@@ -183,6 +111,66 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
   }
 
   return raw;
+}
+
+function getOverlayAssetY(position: "top" | "center" | "bottom"): string {
+  if (position === "top") return "110";
+  if (position === "center") return "(H-h)/2";
+  return "H-h-260";
+}
+
+async function buildOverlayAssetFilterComplex(
+  overlays: TextOverlay[],
+): Promise<
+  { filterChains: string[]; finalLabel: string; assetPaths: string[] }
+> {
+  const validOverlays = overlays.filter(
+    (overlay) =>
+      Number.isFinite(overlay.startSec) &&
+      Number.isFinite(overlay.endSec) &&
+      overlay.endSec > overlay.startSec,
+  );
+
+  if (!validOverlays.length) {
+    return { filterChains: [], finalLabel: "[vbase]", assetPaths: [] };
+  }
+
+  const chains: string[] = [];
+  const assetPaths: string[] = [];
+
+  let currentLabel = "[vbase]";
+  let step = 0;
+
+  for (const overlay of validOverlays) {
+    const assetPath = await createOverlayAsset(overlay);
+    if (!assetPath) continue;
+
+    assetPaths.push(assetPath);
+
+    const escapedAssetPath = escapeForSubtitles(path.resolve(assetPath));
+    const assetLabel = `[ovr${step + 1}]`;
+    const nextLabel = `[v${++step}]`;
+    const y = getOverlayAssetY(overlay.position);
+
+    chains.push(`movie='${escapedAssetPath}'${assetLabel}`);
+    chains.push(
+      `${currentLabel}${assetLabel}overlay=` +
+        `x=(W-w)/2:` +
+        `y=${y}:` +
+        `enable='between(t\\,${overlay.startSec.toFixed(3)}\\,${
+          overlay.endSec.toFixed(3)
+        })'` +
+        `${nextLabel}`,
+    );
+
+    currentLabel = nextLabel;
+  }
+
+  return {
+    filterChains: chains,
+    finalLabel: currentLabel,
+    assetPaths,
+  };
 }
 
 export async function renderPreviewClips(
@@ -319,10 +307,10 @@ export async function renderShortsWithSubtitles(
         `subtitles='${escapedSubs}':fontsdir='${escapedFontsDir}'`;
     }
 
-    const filters: string[] = [];
+    const baseFilters: string[] = [];
 
     if (aspect === "verticalLetterbox") {
-      filters.push(
+      baseFilters.push(
         "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
       );
     }
@@ -332,35 +320,52 @@ export async function renderShortsWithSubtitles(
 
       if (cropInfo && cropInfo.segments && cropInfo.segments.length > 0) {
         const xExpr = buildCropXExprForSegments(cropInfo.segments);
-        filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
+        baseFilters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
       } else {
-        filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
+        baseFilters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
       }
 
-      filters.push("scale=1080:1920:flags=bicubic");
+      baseFilters.push("scale=1080:1920:flags=bicubic");
     }
 
     if (subtitlesFilter) {
-      filters.push(subtitlesFilter);
+      baseFilters.push(subtitlesFilter);
     }
 
     const overlaysForClip = (opts?.textOverlays ?? []).filter(
       (overlay) => overlay.clipIndex === i,
     );
 
-    const overlayFilters = buildOverlayDrawtextFilters(overlaysForClip);
-    if (overlayFilters.length) {
-      filters.push(...overlayFilters);
+    const filterComplexParts: string[] = [];
+
+    if (baseFilters.length > 0) {
+      filterComplexParts.push(`[0:v]${baseFilters.join(",")}[vbase]`);
+    } else {
+      filterComplexParts.push(`[0:v]null[vbase]`);
     }
 
-    const filter = filters.join(",");
+    const {
+      filterChains: overlayChains,
+      finalLabel,
+      assetPaths: overlayAssetPaths,
+    } = await buildOverlayAssetFilterComplex(overlaysForClip);
+
+    if (overlayChains.length) {
+      filterComplexParts.push(...overlayChains);
+    }
+
+    const filterComplex = filterComplexParts.join(";");
 
     const ffArgs = [
       "-y",
       "-i",
       clipPath,
-      "-vf",
-      filter,
+      "-filter_complex",
+      filterComplex,
+      "-map",
+      finalLabel,
+      "-map",
+      "0:a?",
       "-c:v",
       "libx264",
       "-preset",
@@ -383,6 +388,12 @@ export async function renderShortsWithSubtitles(
     ];
 
     await runFfmpeg(ffArgs, `renderShortsWithSubtitles:${id}`);
+
+    await Promise.all(
+      (overlayAssetPaths ?? []).map((p) =>
+        fsPromises.unlink(p).catch(() => {})
+      ),
+    );
 
     await runFfmpeg(
       [
