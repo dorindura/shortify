@@ -22,7 +22,7 @@ async function main() {
   const { registerJobReviewRoute } = await import("./routes/review");
   const { registerJobRenderRoute } = await import("./routes/render");
   const { registerJobClipPreviewRoute } = await import(
-    "./routes/jobClipPreview.ts"
+    "./routes/jobClipPreview"
   );
 
   const app = Fastify({
