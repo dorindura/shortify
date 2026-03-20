@@ -10,6 +10,7 @@ type Props = {
   downloadingKey: string | null;
   onDeleteJob: (jobId: string) => Promise<void>;
   onDownload: (fileUrl: string, filename: string, key: string) => Promise<void>;
+  openReview: (job: Job) => void;
 };
 
 export default function JobCard({
