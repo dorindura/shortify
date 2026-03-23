@@ -104,6 +104,7 @@ export type Job = {
   maxClips?: number;
   captionsEnabled?: boolean;
   captionStyle?: CaptionStyle;
+  blackAndWhite?: boolean;
 
   clips?: string[];
   previewClips?: string[];

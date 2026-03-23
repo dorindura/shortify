@@ -17,6 +17,7 @@ import { uploadLocalFileToStorage } from "@server/storage/upload";
 import { cleanupLocalJobArtifacts } from "@server/storage/cleanup";
 
 type TextOverlayPosition = "top" | "center" | "bottom";
+type OverlayEmojiPlacement = "left" | "right";
 
 type TextOverlay = {
   id: string;
@@ -25,6 +26,8 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: OverlayEmojiPlacement;
 };
 
 type SubtitleFile = string | { path: string };
@@ -84,6 +87,7 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
     const captionsEnabled = job.captions_enabled ?? true;
     const style = job.caption_style ?? "karaoke";
     const aspect = job.aspect ?? "horizontal";
+    const blackAndWhite = job.black_and_white ?? false;
 
     const audioPaths: string[] = [];
     const extraPaths: string[] = [];
@@ -127,6 +131,7 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
         captionsEnabled,
         smartCrop: smartCrops,
         textOverlays,
+        blackAndWhite,
       });
 
       extraPaths.push(...videos, ...(thumbs ?? []).filter(Boolean));

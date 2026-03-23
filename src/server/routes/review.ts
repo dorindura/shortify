@@ -212,6 +212,10 @@ export async function registerJobReviewRoute(app: FastifyInstance) {
       patch.captions_enabled = Boolean(body.captionsEnabled);
     }
 
+    if ("blackAndWhite" in body) {
+      patch.black_and_white = Boolean(body.blackAndWhite);
+    }
+
     await dbSetJobCaptionDrafts(jobId, captionDrafts);
     await dbSetJobTextOverlays(jobId, textOverlays);
 

@@ -53,6 +53,7 @@ type Props = {
   drafts: CaptionDraftClip[];
   overlays: TextOverlay[];
   captionsEnabled: boolean;
+  blackAndWhite?: boolean;
   aspect?: "horizontal" | "vertical" | "verticalLetterbox";
   smartCrops?: (SmartCropBox | null)[];
   onTimeChange?: (time: number) => void;
@@ -77,6 +78,7 @@ export default function ReviewVideoPreview({
   drafts,
   overlays,
   captionsEnabled,
+  blackAndWhite,
   onTimeChange,
   seekTo,
   onSeekHandled,
@@ -152,6 +154,9 @@ export default function ReviewVideoPreview({
               src={clipUrl}
               controls
               className="h-full w-full bg-black object-contain"
+              style={{
+                filter: blackAndWhite ? "grayscale(1)" : "none",
+              }}
               onTimeUpdate={(e) => {
                 const next = e.currentTarget.currentTime;
                 setCurrentTime(next);

@@ -44,6 +44,7 @@ type ReviewJob = {
   textOverlays?: TextOverlay[];
   captionStyle?: CaptionStyle;
   captionsEnabled?: boolean;
+  blackAndWhite?: boolean;
 };
 
 type Props = {
@@ -67,6 +68,7 @@ export default function JobReviewPanel({
   const [overlays, setOverlays] = useState<TextOverlay[]>(job.textOverlays ?? []);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(job.captionStyle ?? "karaoke");
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(job.captionsEnabled ?? true);
+  const [blackAndWhite, setBlackAndWhite] = useState<boolean>(job.blackAndWhite ?? false);
 
   const [saving, setSaving] = useState(false);
   const [rendering, setRendering] = useState(false);
@@ -79,6 +81,7 @@ export default function JobReviewPanel({
     setOverlays(job.textOverlays ?? []);
     setCaptionStyle(job.captionStyle ?? "karaoke");
     setCaptionsEnabled(job.captionsEnabled ?? true);
+    setBlackAndWhite(job.blackAndWhite ?? false);
     setSelectedClipIndex(0);
   }, [job]);
 
@@ -147,6 +150,7 @@ export default function JobReviewPanel({
           textOverlays: overlays,
           captionStyle,
           captionsEnabled,
+          blackAndWhite,
         }),
       });
 
@@ -174,6 +178,7 @@ export default function JobReviewPanel({
           textOverlays: overlays,
           captionStyle,
           captionsEnabled,
+          blackAndWhite,
         }),
       });
 
@@ -235,6 +240,7 @@ export default function JobReviewPanel({
                 drafts={drafts}
                 overlays={overlays}
                 captionsEnabled={captionsEnabled}
+                blackAndWhite={blackAndWhite}
                 seekTo={seekTo}
                 onSeekHandled={() => setSeekTo(null)}
               />
@@ -292,6 +298,25 @@ export default function JobReviewPanel({
               />
 
               <TextOverlayEditor overlays={overlays} clipCount={clipCount} onChange={setOverlays} />
+
+              <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-[11px]">
+                <span className="text-slate-400">Black & White</span>
+                <button
+                  type="button"
+                  onClick={() => setBlackAndWhite((v) => !v)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
+                    blackAndWhite
+                      ? "border-emerald-400 bg-emerald-500/20"
+                      : "border-slate-600 bg-slate-800/80"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-slate-100 shadow transition ${
+                      blackAndWhite ? "translate-x-4" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </label>
             </div>
           </div>
         </div>

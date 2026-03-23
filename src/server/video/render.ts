@@ -34,6 +34,7 @@ type RenderOptions = {
   captionsEnabled?: boolean;
   smartCrop?: (SmartCropBox | null)[];
   textOverlays?: TextOverlay[];
+  blackAndWhite?: boolean;
 };
 
 async function ensureDir(dir: string) {
@@ -326,6 +327,10 @@ export async function renderShortsWithSubtitles(
       }
 
       baseFilters.push("scale=1080:1920:flags=bicubic");
+    }
+
+    if (opts?.blackAndWhite) {
+      baseFilters.push("colorchannelmixer=.3:.4:.3:0:.3:.4:.3:0:.3:.4:.3");
     }
 
     if (subtitlesFilter) {
