@@ -31,6 +31,7 @@ export async function createJob(job: Job, sb: SupabaseClient) {
     smart_crops: job.smartCrops ?? null,
     created_at: job.createdAt,
     updated_at: job.updatedAt,
+    ending: job.ending ?? null,
   });
 
   if (error) throw error;
@@ -75,5 +76,6 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
     textOverlays: row.text_overlays ?? undefined,
     reviewReady: row.review_ready ?? false,
     smartCrops: row.smart_crops ?? undefined,
+    ending: row.ending ?? undefined,
   }));
 }

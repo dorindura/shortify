@@ -44,6 +44,21 @@ type TextOverlay = {
   emojiPlacement: OverlayEmojiPlacement;
 };
 
+type EndingType = "none" | "freeze";
+
+type EndingPosition = "top" | "center" | "bottom";
+type EndingEmojiPlacement = "left" | "right" | "center";
+
+type EndingConfig = {
+  type: EndingType;
+  text?: string;
+  subtext?: string;
+  durationSec?: number;
+  emoji?: string;
+  emojiPlacement?: EndingEmojiPlacement;
+  position?: EndingPosition;
+};
+
 function isCaptionStyle(value: unknown): value is CaptionStyle {
   return value === "boldYellow" || value === "subtle" || value === "karaoke";
 }
@@ -169,6 +184,52 @@ function sanitizeTextOverlays(input: unknown): TextOverlay[] {
     .filter(Boolean) as TextOverlay[];
 }
 
+function isEndingType(value: unknown): value is EndingType {
+  return value === "none" || value === "freeze";
+}
+
+function isEndingPosition(value: unknown): value is EndingPosition {
+  return value === "top" || value === "center" || value === "bottom";
+}
+
+function isEndingEmojiPlacement(value: unknown): value is EndingEmojiPlacement {
+  return value === "left" || value === "right" || value === "center";
+}
+
+function isEndingEmoji(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+
+  return OVERLAY_EMOJIS.some((emoji) => emoji.id === value || emoji.char === value);
+}
+function sanitizeEnding(input: unknown): EndingConfig | null {
+  if (!input || typeof input !== "object") return null;
+
+  const raw = input as any;
+  const type = raw?.type;
+
+  if (!isEndingType(type)) return null;
+
+  const text = normalizeText(raw?.text);
+  const subtext = normalizeText(raw?.subtext);
+
+  const durationRaw = Number(raw?.durationSec);
+  const durationSec = Number.isFinite(durationRaw) ? Math.max(0.5, Math.min(3, durationRaw)) : 1.2;
+
+  const emoji = isEndingEmoji(raw?.emoji) ? raw.emoji : undefined;
+  const emojiPlacement = isEndingEmojiPlacement(raw?.emojiPlacement) ? raw.emojiPlacement : "right";
+  const position = isEndingPosition(raw?.position) ? raw.position : "bottom";
+
+  return {
+    type,
+    text: text || undefined,
+    subtext: subtext || undefined,
+    durationSec,
+    emoji,
+    emojiPlacement,
+    position,
+  };
+}
+
 export async function registerJobReviewRoute(app: FastifyInstance) {
   app.post("/api/jobs/:jobId/review", async (req, reply) => {
     const user = await requireUser(req, reply);
@@ -198,6 +259,7 @@ export async function registerJobReviewRoute(app: FastifyInstance) {
 
     const captionDrafts = sanitizeCaptionDrafts(body.captionDrafts);
     const textOverlays = sanitizeTextOverlays(body.textOverlays);
+    const ending = sanitizeEnding(body.ending);
 
     const patch: Record<string, any> = {};
 
@@ -214,6 +276,10 @@ export async function registerJobReviewRoute(app: FastifyInstance) {
 
     if ("blackAndWhite" in body) {
       patch.black_and_white = Boolean(body.blackAndWhite);
+    }
+
+    if ("ending" in body) {
+      patch.ending = ending;
     }
 
     await dbSetJobCaptionDrafts(jobId, captionDrafts);

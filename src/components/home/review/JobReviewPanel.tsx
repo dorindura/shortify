@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import CaptionDraftEditor from "./CaptionDraftEditor";
 import TextOverlayEditor from "./TextOverlayEditor";
 import ReviewVideoPreview from "./ReviewVideoPreview";
+import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
 type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 type TextOverlayPosition = "top" | "center" | "bottom";
@@ -36,6 +37,28 @@ type TextOverlay = {
   position: TextOverlayPosition;
 };
 
+type EndingType = "none" | "freeze";
+
+type EndingPosition = "top" | "center" | "bottom";
+type EndingEmojiPlacement = "left" | "right" | "center";
+
+type EndingConfig = {
+  type: EndingType;
+  text?: string;
+  subtext?: string;
+  emoji?: string;
+  emojiPlacement?: EndingEmojiPlacement;
+  position?: EndingPosition;
+  durationSec?: number;
+};
+
+const DEFAULT_ENDING: EndingConfig = {
+  type: "none",
+  durationSec: 1.2,
+  emojiPlacement: "right",
+  position: "bottom",
+};
+
 type ReviewJob = {
   id: string;
   clips?: string[];
@@ -45,6 +68,7 @@ type ReviewJob = {
   captionStyle?: CaptionStyle;
   captionsEnabled?: boolean;
   blackAndWhite?: boolean;
+  ending?: EndingConfig;
 };
 
 type Props = {
@@ -69,6 +93,7 @@ export default function JobReviewPanel({
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(job.captionStyle ?? "karaoke");
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(job.captionsEnabled ?? true);
   const [blackAndWhite, setBlackAndWhite] = useState<boolean>(job.blackAndWhite ?? false);
+  const [ending, setEnding] = useState<EndingConfig>(job.ending ?? DEFAULT_ENDING);
 
   const [saving, setSaving] = useState(false);
   const [rendering, setRendering] = useState(false);
@@ -82,6 +107,7 @@ export default function JobReviewPanel({
     setCaptionStyle(job.captionStyle ?? "karaoke");
     setCaptionsEnabled(job.captionsEnabled ?? true);
     setBlackAndWhite(job.blackAndWhite ?? false);
+    setEnding(job.ending ?? DEFAULT_ENDING);
     setSelectedClipIndex(0);
   }, [job]);
 
@@ -151,6 +177,7 @@ export default function JobReviewPanel({
           captionStyle,
           captionsEnabled,
           blackAndWhite,
+          ending,
         }),
       });
 
@@ -179,6 +206,7 @@ export default function JobReviewPanel({
           captionStyle,
           captionsEnabled,
           blackAndWhite,
+          ending,
         }),
       });
 
@@ -241,6 +269,7 @@ export default function JobReviewPanel({
                 overlays={overlays}
                 captionsEnabled={captionsEnabled}
                 blackAndWhite={blackAndWhite}
+                ending={ending}
                 seekTo={seekTo}
                 onSeekHandled={() => setSeekTo(null)}
               />
@@ -285,6 +314,147 @@ export default function JobReviewPanel({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+                <div className="mb-3 text-sm font-semibold text-slate-100">Ending</div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  {(["none", "freeze"] as EndingType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        setEnding((prev) => ({
+                          ...prev,
+                          type,
+                        }))
+                      }
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                        ending.type === type
+                          ? "border-sky-500 bg-slate-900/80 text-slate-50"
+                          : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-500/60"
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        {type === "none" ? "None" : "Freeze frame"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {ending.type === "freeze" && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400">Ending text</label>
+                      <input
+                        type="text"
+                        value={ending.text ?? ""}
+                        onChange={(e) =>
+                          setEnding((prev) => ({
+                            ...prev,
+                            text: e.target.value,
+                          }))
+                        }
+                        placeholder="Follow for more"
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+
+                    {/*<div>*/}
+                    {/*  <label className="text-[10px] font-medium text-slate-400">Subtext</label>*/}
+                    {/*  <input*/}
+                    {/*    type="text"*/}
+                    {/*    value={ending.subtext ?? ""}*/}
+                    {/*    onChange={(e) =>*/}
+                    {/*      setEnding((prev) => ({*/}
+                    {/*        ...prev,*/}
+                    {/*        subtext: e.target.value,*/}
+                    {/*      }))*/}
+                    {/*    }*/}
+                    {/*    placeholder="@hookify.app"*/}
+                    {/*    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"*/}
+                    {/*  />*/}
+                    {/*</div>*/}
+
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400">Emoji</label>
+                      <select
+                        value={ending.emoji ?? ""}
+                        onChange={(e) =>
+                          setEnding((prev) => ({
+                            ...prev,
+                            emoji: e.target.value || undefined,
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      >
+                        <option value="">No emoji</option>
+                        {OVERLAY_EMOJIS.map((emoji) => (
+                          <option key={emoji.id} value={emoji.char}>
+                            {emoji.char} {emoji.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400">
+                        Emoji placement
+                      </label>
+                      <select
+                        value={ending.emojiPlacement ?? "right"}
+                        onChange={(e) =>
+                          setEnding((prev) => ({
+                            ...prev,
+                            emojiPlacement: e.target.value as "left" | "right" | "center",
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      >
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                        <option value="center">Both sides</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400">Position</label>
+                      <select
+                        value={ending.position ?? "bottom"}
+                        onChange={(e) =>
+                          setEnding((prev) => ({
+                            ...prev,
+                            position: e.target.value as "top" | "center" | "bottom",
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      >
+                        <option value="top">Top</option>
+                        <option value="center">Center</option>
+                        <option value="bottom">Bottom</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-400">Duration</label>
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="3"
+                        step="0.1"
+                        value={ending.durationSec ?? 1.2}
+                        onChange={(e) =>
+                          setEnding((prev) => ({
+                            ...prev,
+                            durationSec: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -91,6 +91,21 @@ export type SmartCropBox = {
   segments: SmartCropSegment[];
 };
 
+export type EndingType = "none" | "freeze";
+
+export type EndingPosition = "top" | "center" | "bottom";
+export type EndingEmojiPlacement = "left" | "right" | "center";
+
+export type EndingConfig = {
+  type: EndingType;
+  text?: string;
+  subtext?: string;
+  durationSec?: number;
+  emoji?: string;
+  emojiPlacement?: EndingEmojiPlacement;
+  position?: EndingPosition;
+};
+
 export type Job = {
   id: string;
   ownerId: string;
@@ -126,6 +141,7 @@ export type Job = {
   reviewReady?: boolean;
 
   smartCrops?: (SmartCropBox | null)[];
+  ending?: EndingConfig;
 };
 
 const jobs: Job[] = [];

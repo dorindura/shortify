@@ -47,6 +47,18 @@ type SmartCropBox = {
   segments: SmartCropSegment[];
 };
 
+type EndingType = "none" | "freeze";
+
+type EndingConfig = {
+  type: EndingType;
+  text?: string;
+  subtext?: string;
+  durationSec?: number;
+  emoji?: string;
+  emojiPlacement?: "left" | "right" | "center";
+  position?: "top" | "center" | "bottom";
+};
+
 type Props = {
   clipUrl?: string | null;
   clipIndex: number;
@@ -54,6 +66,7 @@ type Props = {
   overlays: TextOverlay[];
   captionsEnabled: boolean;
   blackAndWhite?: boolean;
+  ending?: EndingConfig;
   aspect?: "horizontal" | "vertical" | "verticalLetterbox";
   smartCrops?: (SmartCropBox | null)[];
   onTimeChange?: (time: number) => void;
@@ -72,6 +85,42 @@ function getEmojiChar(emojiId?: string | null) {
   return OVERLAY_EMOJIS.find((e) => e.id === emojiId)?.char ?? null;
 }
 
+function getEndingPreviewPositionClass(position?: "top" | "center" | "bottom") {
+  switch (position) {
+    case "top":
+      return "items-start pt-10";
+    case "center":
+      return "items-center";
+    case "bottom":
+    default:
+      return "items-end pb-14";
+  }
+}
+
+function buildEndingPreviewParts(ending?: EndingConfig) {
+  const text = ending?.text?.trim() ?? "";
+  const emoji = ending?.emoji ?? "";
+
+  if (!emoji && !text) return { left: "", center: "", right: "" };
+
+  switch (ending?.emojiPlacement) {
+    case "left":
+      return { left: emoji, center: text, right: "" };
+
+    case "right":
+      return { left: "", center: text, right: emoji };
+
+    case "center":
+      if (!text) {
+        return { left: "", center: emoji, right: "" };
+      }
+      return { left: "", center: `${emoji} ${text} ${emoji}`, right: "" };
+
+    default:
+      return { left: "", center: text, right: emoji };
+  }
+}
+
 export default function ReviewVideoPreview({
   clipUrl,
   clipIndex,
@@ -79,12 +128,15 @@ export default function ReviewVideoPreview({
   overlays,
   captionsEnabled,
   blackAndWhite,
+  ending,
   onTimeChange,
   seekTo,
   onSeekHandled,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [isEndingPreviewActive, setIsEndingPreviewActive] = useState(false);
 
   const currentClipDraft = useMemo(
     () => drafts.find((clip) => clip.clipIndex === clipIndex) ?? null,
@@ -118,6 +170,7 @@ export default function ReviewVideoPreview({
     const video = videoRef.current;
     video.currentTime = seekTo;
     setCurrentTime(seekTo);
+    setIsEndingPreviewActive(false);
     onTimeChange?.(seekTo);
 
     video.play().catch(() => {
@@ -129,7 +182,27 @@ export default function ReviewVideoPreview({
 
   useEffect(() => {
     setCurrentTime(0);
+    setIsEndingPreviewActive(false);
+    setVideoDuration(0);
   }, [clipIndex, clipUrl]);
+
+  const endingDuration = Math.max(0.5, Math.min(3, ending?.durationSec ?? 1.2));
+
+  useEffect(() => {
+    setIsEndingPreviewActive(false);
+  }, [
+    clipIndex,
+    clipUrl,
+    ending?.type,
+    ending?.durationSec,
+    ending?.text,
+    ending?.subtext,
+    ending?.emoji,
+    ending?.emojiPlacement,
+    ending?.position,
+  ]);
+
+  const endingPreview = buildEndingPreviewParts(ending);
 
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
@@ -153,14 +226,53 @@ export default function ReviewVideoPreview({
               ref={videoRef}
               src={clipUrl}
               controls
+              onLoadedMetadata={(e) => {
+                setVideoDuration(e.currentTarget.duration || 0);
+              }}
               className="h-full w-full bg-black object-contain"
               style={{
                 filter: blackAndWhite ? "grayscale(1)" : "none",
               }}
+              onPlay={() => {
+                if (isEndingPreviewActive) {
+                  setIsEndingPreviewActive(false);
+                }
+              }}
+              onSeeking={() => {
+                if (isEndingPreviewActive) {
+                  setIsEndingPreviewActive(false);
+                }
+              }}
+              onEnded={() => {
+                if (ending?.type === "freeze") {
+                  setIsEndingPreviewActive(true);
+                }
+              }}
               onTimeUpdate={(e) => {
-                const next = e.currentTarget.currentTime;
+                const video = e.currentTarget;
+                const next = video.currentTime;
+                const duration = video.duration || 0;
+
                 setCurrentTime(next);
                 onTimeChange?.(next);
+
+                if (
+                  ending?.type === "freeze" &&
+                  duration > 0 &&
+                  next >= Math.max(0, duration - endingDuration)
+                ) {
+                  if (!isEndingPreviewActive) {
+                    const freezeAt = Math.max(0, duration - endingDuration - 0.02);
+
+                    video.currentTime = freezeAt;
+                    video.pause();
+
+                    setCurrentTime(freezeAt);
+                    setIsEndingPreviewActive(true);
+                  }
+
+                  return;
+                }
               }}
             />
           ) : (
@@ -169,7 +281,7 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {captionsEnabled && activeChunk?.text && (
+          {captionsEnabled && activeChunk?.text && !isEndingPreviewActive && (
             <div className="pointer-events-none absolute inset-x-4 bottom-16 flex justify-center">
               {/*<div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
               {activeChunk.text}
@@ -177,28 +289,60 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {activeOverlays.map((overlay) => (
+          {!isEndingPreviewActive &&
+            activeOverlays.map((overlay) => (
+              <div
+                key={overlay.id}
+                className={`pointer-events-none absolute left-1/2 z-10 w-[82%] -translate-x-1/2 ${getOverlayPositionClass(
+                  overlay.position,
+                )}`}
+              >
+                {/*<div className="rounded-xl bg-slate-950/65 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
+                <div className="flex items-center justify-center gap-2">
+                  {overlay.emoji && (overlay.emojiPlacement ?? "left") === "left" && (
+                    <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
+                  )}
+
+                  {overlay.text && <span>{overlay.text}</span>}
+
+                  {overlay.emoji && (overlay.emojiPlacement ?? "left") === "right" && (
+                    <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
+                  )}
+                </div>
+                {/*</div>*/}
+              </div>
+            ))}
+          {ending?.type === "freeze" && isEndingPreviewActive && (
             <div
-              key={overlay.id}
-              className={`pointer-events-none absolute left-1/2 z-10 w-[82%] -translate-x-1/2 ${getOverlayPositionClass(
-                overlay.position,
-              )}`}
+              className={`pointer-events-none absolute inset-0 z-20 flex justify-center transition-opacity duration-300 ${
+                isEndingPreviewActive ? "opacity-100" : "opacity-0"
+              } ${getEndingPreviewPositionClass(ending.position)}`}
             >
-              {/*<div className="rounded-xl bg-slate-950/65 px-4 py-2 text-center text-sm font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
-              <div className="flex items-center justify-center gap-2">
-                {overlay.emoji && (overlay.emojiPlacement ?? "left") === "left" && (
-                  <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
-                )}
+              <div className="max-w-[82%] px-4 text-center">
+                <div className="flex items-center justify-center gap-3">
+                  {endingPreview.left && (
+                    <span className="text-2xl leading-none">{endingPreview.left}</span>
+                  )}
 
-                {overlay.text && <span>{overlay.text}</span>}
+                  {endingPreview.center && (
+                    <div className="text-xl font-extrabold tracking-tight text-white [text-shadow:0_2px_12px_rgba(0,0,0,0.65)]">
+                      {endingPreview.center}
+                    </div>
+                  )}
 
-                {overlay.emoji && (overlay.emojiPlacement ?? "left") === "right" && (
-                  <span className="text-xl leading-none">{getEmojiChar(overlay.emoji)}</span>
+                  {endingPreview.right && (
+                    <span className="text-2xl leading-none">{endingPreview.right}</span>
+                  )}
+                </div>
+
+                {ending.subtext && (
+                  <div className="mt-1 text-xs text-slate-200 [text-shadow:0_2px_10px_rgba(0,0,0,0.55)]">
+                    {ending.subtext}
+                  </div>
                 )}
               </div>
-              {/*</div>*/}
             </div>
-          ))}
+          )}
         </div>
       </div>
 

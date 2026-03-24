@@ -15,6 +15,7 @@ import { analyzeAudioEnergyForClip } from "@server/video/audioEnergy";
 import { renderShortsWithSubtitles } from "@server/video/render";
 import { uploadLocalFileToStorage } from "@server/storage/upload";
 import { cleanupLocalJobArtifacts } from "@server/storage/cleanup";
+import { applyEndingToVideo } from "@server/video/ending";
 
 type TextOverlayPosition = "top" | "center" | "bottom";
 type OverlayEmojiPlacement = "left" | "right";
@@ -34,6 +35,20 @@ type SubtitleFile = string | { path: string };
 
 function subtitleToPath(s: SubtitleFile): string {
   return typeof s === "string" ? s : s.path;
+}
+
+function toLocalAssetPath(assetPath: string): string {
+  if (!assetPath) return assetPath;
+
+  if (assetPath.startsWith("/shorts/") || assetPath.startsWith("/thumbs/")) {
+    return path.join(process.cwd(), "public", assetPath.replace(/^\/+/, ""));
+  }
+
+  return assetPath;
+}
+
+function toLocalAssetPaths(paths: string[]): string[] {
+  return paths.map(toLocalAssetPath);
 }
 
 export async function registerJobRenderRoute(app: FastifyInstance) {
@@ -88,10 +103,13 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
     const style = job.caption_style ?? "karaoke";
     const aspect = job.aspect ?? "horizontal";
     const blackAndWhite = job.black_and_white ?? false;
+    const ending = job.ending ?? null;
 
     const audioPaths: string[] = [];
     const extraPaths: string[] = [];
     const energyByClip: (EnergyFrame[] | null)[] = [];
+
+    let subtitlePaths: string[] = [];
 
     try {
       await dbUpdateJobStatus(jobId, "processing");
@@ -116,7 +134,7 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
         captionStyle: style,
       });
 
-      const subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);
+      subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);
 
       // --- SMART CROP ---
       await dbUpdateJobStage(jobId, "clipping", 65);
@@ -134,7 +152,21 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
         blackAndWhite,
       });
 
-      extraPaths.push(...videos, ...(thumbs ?? []).filter(Boolean));
+      const localVideoPaths = toLocalAssetPaths(videos);
+      const localThumbPaths = toLocalAssetPaths(thumbs ?? []);
+
+      const finalVideoPaths: string[] = [];
+
+      for (const localVideoPath of localVideoPaths) {
+        const endedPath = await applyEndingToVideo(localVideoPath, ending);
+        finalVideoPaths.push(endedPath);
+      }
+
+      extraPaths.push(
+        ...localVideoPaths,
+        ...finalVideoPaths.filter((p) => !localVideoPaths.includes(p)),
+        ...localThumbPaths.filter(Boolean),
+      );
 
       // --- UPLOAD ---
       await dbUpdateJobStage(jobId, "uploading", 92);
@@ -142,9 +174,9 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
       const videoUrls: string[] = [];
       const thumbUrls: string[] = [];
 
-      for (let i = 0; i < videos.length; i++) {
-        const localVideoPath = videos[i];
-        const localThumbPath = thumbs?.[i];
+      for (let i = 0; i < finalVideoPaths.length; i++) {
+        const localVideoPath = finalVideoPaths[i];
+        const localThumbPath = localThumbPaths?.[i];
 
         const videoObjectPath = `jobs/${jobId}/short-${i + 1}.mp4`;
         const thumbExt = localThumbPath ? path.extname(localThumbPath) || ".jpg" : ".jpg";
@@ -196,7 +228,7 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
       await cleanupLocalJobArtifacts({
         clipPaths: [],
         audioPaths,
-        subtitlePaths: [],
+        subtitlePaths,
         extraPaths,
       });
 
