@@ -183,9 +183,10 @@ async function copyFileManyTimes(
 
 export async function renderQuoteReelFromImages(input: {
   images: string[];
-  secondsPerImage: number;
+  totalDurationSec: number;
   quote: string;
   author: string;
+  loopCount?: number;
 }) {
   await ensureDir(TMP_DIR);
 
@@ -202,7 +203,11 @@ export async function renderQuoteReelFromImages(input: {
   const outVideoPath = path.join(TMP_DIR, `${id}.mp4`);
   const outThumbPath = path.join(TMP_DIR, `${id}.jpg`);
 
-  const secondsPerImage = clamp(input.secondsPerImage, 0.45, 1.2);
+  const loopCount = Math.max(1, Math.min(6, input.loopCount ?? 4));
+  const totalDurationSec = clamp(input.totalDurationSec, 10, 60);
+
+  const totalImageSlots = Math.max(1, input.images.length * loopCount);
+  const secondsPerImage = clamp(totalDurationSec / totalImageSlots, 0.18, 0.8);
   const framesPerImage = Math.max(1, Math.round(secondsPerImage * FPS));
 
   const fontQuote = path.join(process.cwd(), "public", "fonts", "PlayfairDisplay-Bold.ttf");
@@ -216,7 +221,6 @@ export async function renderQuoteReelFromImages(input: {
   await ensureDir(framesDir);
 
   try {
-    // 1) Normalize each selected image once
     const normalizedImages: string[] = [];
 
     for (let i = 0; i < input.images.length; i += 1) {
@@ -230,17 +234,17 @@ export async function renderQuoteReelFromImages(input: {
       normalizedImages.push(normalizedPath);
     }
 
-    // 2) Expand into real frame sequence
     let frameIndex = 1;
 
-    for (const normalizedPath of normalizedImages) {
-      frameIndex = await copyFileManyTimes(normalizedPath, framesDir, frameIndex, framesPerImage);
+    for (let loopIndex = 0; loopIndex < loopCount; loopIndex += 1) {
+      for (const normalizedPath of normalizedImages) {
+        frameIndex = await copyFileManyTimes(normalizedPath, framesDir, frameIndex, framesPerImage);
+      }
     }
 
     const totalFrames = frameIndex - 1;
     const totalDuration = totalFrames / FPS;
 
-    // 3) Build raw slideshow video from frame sequence
     await runFfmpeg(
       [
         "-y",
@@ -265,7 +269,6 @@ export async function renderQuoteReelFromImages(input: {
       "renderQuoteReelFramesToVideo",
     );
 
-    // 4) Overlay quote + author + fade on final raw video
     const vfParts: string[] = [`drawbox=x=0:y=0:w=${WIDTH}:h=${HEIGHT}:color=black@0.10:t=fill`];
 
     layout.lines.forEach((line, index) => {
@@ -285,10 +288,6 @@ export async function renderQuoteReelFromImages(input: {
     );
 
     vfParts.push("fade=t=in:st=0:d=0.6");
-
-    // optional final fade out if you want it later:
-    // const fadeOutStart = Math.max(0, totalDuration - 0.6);
-    // vfParts.push(`fade=t=out:st=${fadeOutStart.toFixed(2)}:d=0.6`);
 
     await runFfmpeg(
       [
@@ -314,7 +313,6 @@ export async function renderQuoteReelFromImages(input: {
       "renderQuoteReelOverlay",
     );
 
-    // 5) Thumbnail
     const thumbSeek = Math.min(1.3, Math.max(0.2, totalDuration / 3));
 
     await runFfmpeg(
