@@ -44,7 +44,7 @@ type TextOverlay = {
   emojiPlacement: OverlayEmojiPlacement;
 };
 
-type EndingType = "none" | "freeze";
+type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
 
 type EndingPosition = "top" | "center" | "bottom";
 type EndingEmojiPlacement = "left" | "right" | "center";
@@ -185,7 +185,7 @@ function sanitizeTextOverlays(input: unknown): TextOverlay[] {
 }
 
 function isEndingType(value: unknown): value is EndingType {
-  return value === "none" || value === "freeze";
+  return value === "none" || value === "freeze" || value === "fadeBlack" || value === "endCard";
 }
 
 function isEndingPosition(value: unknown): value is EndingPosition {

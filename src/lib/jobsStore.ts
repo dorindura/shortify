@@ -91,7 +91,7 @@ export type SmartCropBox = {
   segments: SmartCropSegment[];
 };
 
-export type EndingType = "none" | "freeze";
+export type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
 
 export type EndingPosition = "top" | "center" | "bottom";
 export type EndingEmojiPlacement = "left" | "right" | "center";

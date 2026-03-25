@@ -35,9 +35,11 @@ type TextOverlay = {
   startSec: number;
   endSec: number;
   position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: "left" | "right";
 };
 
-type EndingType = "none" | "freeze";
+type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
 
 type EndingPosition = "top" | "center" | "bottom";
 type EndingEmojiPlacement = "left" | "right" | "center";
@@ -320,7 +322,7 @@ export default function JobReviewPanel({
                 <div className="mb-3 text-sm font-semibold text-slate-100">Ending</div>
 
                 <div className="grid gap-2 md:grid-cols-2">
-                  {(["none", "freeze"] as EndingType[]).map((type) => (
+                  {(["none", "freeze", "fadeBlack", "endCard"] as EndingType[]).map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -337,13 +339,19 @@ export default function JobReviewPanel({
                       }`}
                     >
                       <div className="font-semibold">
-                        {type === "none" ? "None" : "Freeze frame"}
+                        {type === "none"
+                          ? "None"
+                          : type === "freeze"
+                            ? "Freeze frame"
+                            : type === "fadeBlack"
+                              ? "Fade to black"
+                              : "End card"}
                       </div>
                     </button>
                   ))}
                 </div>
 
-                {ending.type === "freeze" && (
+                {ending.type !== "none" && (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="text-[10px] font-medium text-slate-400">Ending text</label>

@@ -95,30 +95,28 @@ export async function applyEndingToVideo(
 
   const outPath = path.join(TMP_ENDINGS_DIR, `${randomUUID()}.mp4`);
   const duration = Math.max(0.5, Math.min(3, Number(ending.durationSec ?? 1.2)));
+  const inputDuration = await probeDuration(inputPath);
+  const startTime = inputDuration + 0.05;
 
-  if (ending.type === "freeze") {
-    const inputDuration = await probeDuration(inputPath);
-    const startTime = inputDuration + 0.05;
+  const endingAssetPath = await createEndingAsset(ending);
 
-    const endingAssetPath = await createEndingAsset(ending);
+  try {
+    if (ending.type === "freeze") {
+      const filterParts: string[] = [`[0:v]tpad=stop_mode=clone:stop_duration=${duration}[v0]`];
+      let finalVideoLabel = "[v0]";
 
-    const filterParts: string[] = [`[0:v]tpad=stop_mode=clone:stop_duration=${duration}[v0]`];
+      if (endingAssetPath) {
+        const escapedAssetPath = escapeFilterPath(path.resolve(endingAssetPath));
+        filterParts.push(`movie='${escapedAssetPath}'[endingasset]`);
+        filterParts.push(
+          `[v0][endingasset]overlay=` +
+            `x=(W-w)/2:` +
+            `y=${getOverlayY(ending.position)}:` +
+            `enable='gte(t,${startTime.toFixed(3)})'[vout]`,
+        );
+        finalVideoLabel = "[vout]";
+      }
 
-    let finalVideoLabel = "[v0]";
-
-    if (endingAssetPath) {
-      const escapedAssetPath = escapeFilterPath(path.resolve(endingAssetPath));
-      filterParts.push(`movie='${escapedAssetPath}'[endingasset]`);
-      filterParts.push(
-        `[v0][endingasset]overlay=` +
-          `x=(W-w)/2:` +
-          `y=${getOverlayY(ending.position)}:` +
-          `enable='gte(t,${startTime.toFixed(3)})'[vout]`,
-      );
-      finalVideoLabel = "[vout]";
-    }
-
-    try {
       await runFfmpeg(
         [
           "-y",
@@ -150,12 +148,126 @@ export async function applyEndingToVideo(
       );
 
       return outPath;
-    } finally {
+    }
+
+    if (ending.type === "fadeBlack") {
+      const fadeStart = inputDuration;
+      const fadeDuration = duration;
+
+      const filterParts: string[] = [
+        `[0:v]tpad=stop_mode=clone:stop_duration=${duration},fade=t=out:st=${fadeStart.toFixed(
+          3,
+        )}:d=${fadeDuration.toFixed(3)}[v0]`,
+      ];
+
+      let finalVideoLabel = "[v0]";
+
       if (endingAssetPath) {
-        await fs.unlink(endingAssetPath).catch(() => {});
+        const escapedAssetPath = escapeFilterPath(path.resolve(endingAssetPath));
+        filterParts.push(`movie='${escapedAssetPath}'[endingasset]`);
+        filterParts.push(
+          `[v0][endingasset]overlay=` +
+            `x=(W-w)/2:` +
+            `y=${getOverlayY(ending.position)}:` +
+            `enable='gte(t,${startTime.toFixed(3)})'[vout]`,
+        );
+        finalVideoLabel = "[vout]";
       }
+
+      await runFfmpeg(
+        [
+          "-y",
+          "-i",
+          inputPath,
+          "-filter_complex",
+          filterParts.join(";"),
+          "-map",
+          finalVideoLabel,
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "superfast",
+          "-crf",
+          "24",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          outPath,
+        ],
+        "applyEndingToVideo:fadeBlack",
+      );
+
+      return outPath;
+    }
+
+    if (ending.type === "endCard") {
+      const filterParts: string[] = [
+        `[0:v]tpad=stop_mode=clone:stop_duration=${duration}[vbase]`,
+        `[vbase]drawbox=` +
+          `x=0:y=0:w=iw:h=ih:` +
+          `color=black@0.88:` +
+          `t=fill:` +
+          `enable='gte(t,${startTime.toFixed(3)})'[v0]`,
+      ];
+
+      let finalVideoLabel = "[v0]";
+
+      if (endingAssetPath) {
+        const escapedAssetPath = escapeFilterPath(path.resolve(endingAssetPath));
+        filterParts.push(`movie='${escapedAssetPath}'[endingasset]`);
+        filterParts.push(
+          `[v0][endingasset]overlay=` +
+            `x=(W-w)/2:` +
+            `y=${getOverlayY(ending.position)}:` +
+            `enable='gte(t,${startTime.toFixed(3)})'[vout]`,
+        );
+        finalVideoLabel = "[vout]";
+      }
+
+      await runFfmpeg(
+        [
+          "-y",
+          "-i",
+          inputPath,
+          "-filter_complex",
+          filterParts.join(";"),
+          "-map",
+          finalVideoLabel,
+          "-map",
+          "0:a?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "superfast",
+          "-crf",
+          "24",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          outPath,
+        ],
+        "applyEndingToVideo:endCard",
+      );
+
+      return outPath;
+    }
+
+    return inputPath;
+  } finally {
+    if (endingAssetPath) {
+      await fs.unlink(endingAssetPath).catch(() => {});
     }
   }
-
-  return inputPath;
 }

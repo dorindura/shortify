@@ -47,7 +47,7 @@ type SmartCropBox = {
   segments: SmartCropSegment[];
 };
 
-type EndingType = "none" | "freeze";
+type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
 
 type EndingConfig = {
   type: EndingType;
@@ -204,6 +204,18 @@ export default function ReviewVideoPreview({
 
   const endingPreview = buildEndingPreviewParts(ending);
 
+  const fadeProgress =
+    ending?.type === "fadeBlack" && videoDuration > 0
+      ? Math.max(0, Math.min(1, (currentTime - (videoDuration - endingDuration)) / endingDuration))
+      : 0;
+
+  const isTimedEndingVisible =
+    (ending?.type === "fadeBlack" || ending?.type === "endCard") &&
+    videoDuration > 0 &&
+    currentTime >= Math.max(0, videoDuration - endingDuration);
+
+  const shouldHideRegularOverlay = isEndingPreviewActive || isTimedEndingVisible;
+
   return (
     <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -247,6 +259,7 @@ export default function ReviewVideoPreview({
                 if (ending?.type === "freeze") {
                   setIsEndingPreviewActive(true);
                 }
+                setCurrentTime(videoDuration || 0);
               }}
               onTimeUpdate={(e) => {
                 const video = e.currentTarget;
@@ -281,7 +294,7 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {captionsEnabled && activeChunk?.text && !isEndingPreviewActive && (
+          {captionsEnabled && activeChunk?.text && !shouldHideRegularOverlay && (
             <div className="pointer-events-none absolute inset-x-4 bottom-16 flex justify-center">
               {/*<div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
               {activeChunk.text}
@@ -289,7 +302,7 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {!isEndingPreviewActive &&
+          {!shouldHideRegularOverlay &&
             activeOverlays.map((overlay) => (
               <div
                 key={overlay.id}
@@ -312,6 +325,74 @@ export default function ReviewVideoPreview({
                 {/*</div>*/}
               </div>
             ))}
+          {ending?.type === "fadeBlack" && fadeProgress > 0 && (
+            <>
+              <div
+                className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-150"
+                style={{
+                  backgroundColor: `rgba(0,0,0,${fadeProgress})`,
+                }}
+              />
+
+              <div
+                className={`pointer-events-none absolute inset-0 z-30 flex justify-center transition-opacity duration-150 ${getEndingPreviewPositionClass(
+                  ending.position,
+                )}`}
+                style={{
+                  opacity: fadeProgress,
+                }}
+              >
+                <div className="max-w-[82%] px-4 text-center">
+                  <div className="flex items-center justify-center gap-3">
+                    {endingPreview.left && (
+                      <span className="text-2xl leading-none">{endingPreview.left}</span>
+                    )}
+
+                    {endingPreview.center && (
+                      <div className="text-xl font-extrabold tracking-tight text-white [text-shadow:0_2px_12px_rgba(0,0,0,0.65)]">
+                        {endingPreview.center}
+                      </div>
+                    )}
+
+                    {endingPreview.right && (
+                      <span className="text-2xl leading-none">{endingPreview.right}</span>
+                    )}
+                  </div>
+
+                  {ending.subtext && (
+                    <div className="mt-1 text-xs text-slate-200 [text-shadow:0_2px_10px_rgba(0,0,0,0.55)]">
+                      {ending.subtext}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          {ending?.type === "endCard" && isTimedEndingVisible && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-slate-950/90 backdrop-blur-md">
+              <div className="w-[82%] rounded-3xl border border-white/10 bg-black/40 px-6 py-8 text-center shadow-2xl">
+                <div className="flex items-center justify-center gap-3">
+                  {endingPreview.left && (
+                    <span className="text-3xl leading-none">{endingPreview.left}</span>
+                  )}
+
+                  {endingPreview.center && (
+                    <div className="text-2xl font-extrabold tracking-tight text-white">
+                      {endingPreview.center}
+                    </div>
+                  )}
+
+                  {endingPreview.right && (
+                    <span className="text-3xl leading-none">{endingPreview.right}</span>
+                  )}
+                </div>
+
+                {ending.subtext && (
+                  <div className="mt-3 text-sm text-slate-300">{ending.subtext}</div>
+                )}
+              </div>
+            </div>
+          )}
           {ending?.type === "freeze" && isEndingPreviewActive && (
             <div
               className={`pointer-events-none absolute inset-0 z-20 flex justify-center transition-opacity duration-300 ${

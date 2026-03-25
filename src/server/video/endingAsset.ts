@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
-export type EndingType = "none" | "freeze";
+export type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
 export type EndingPosition = "top" | "center" | "bottom";
 export type EndingEmojiPlacement = "left" | "right" | "center";
 
@@ -138,17 +138,19 @@ export async function createEndingAsset(ending: EndingConfig): Promise<string | 
 
   const outPath = path.join(TMP_ENDINGS_DIR, `${randomUUID()}.png`);
 
-  const mainFontSize = 64;
-  const subFontSize = 30;
+  const isCardEnding = ending.type === "endCard";
+
+  const mainFontSize = isCardEnding ? 60 : 64;
+  const subFontSize = isCardEnding ? 28 : 30;
   const mainStrokeWidth = 3;
   const subStrokeWidth = 2;
 
-  const emojiSize = 82;
+  const emojiSize = isCardEnding ? 78 : 82;
   const emojiGap = 10;
-  const lineGap = 14;
+  const lineGap = isCardEnding ? 18 : 14;
 
-  const padX = 26;
-  const padY = 22;
+  const padX = isCardEnding ? 42 : 26;
+  const padY = isCardEnding ? 34 : 22;
 
   const mainLine = buildMainLineParts(ending);
 
@@ -187,6 +189,22 @@ export async function createEndingAsset(ending: EndingConfig): Promise<string | 
   const height = Math.max(1, contentHeight + padY * 2);
 
   const svgParts: string[] = [];
+
+  if (isCardEnding) {
+    svgParts.push(`
+    <rect
+      x="8"
+      y="8"
+      width="${width - 16}"
+      height="${height - 16}"
+      rx="28"
+      ry="28"
+      fill="rgba(15,23,42,0.88)"
+      stroke="rgba(255,255,255,0.14)"
+      stroke-width="2"
+    />
+  `);
+  }
 
   const contentLeft = Math.round((width - contentWidth) / 2);
   const mainTop = padY;
