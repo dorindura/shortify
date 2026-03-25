@@ -31,6 +31,36 @@ export type ShortsConfig = {
   customRanges?: ShortsCustomRange[];
 };
 
+export type CaptionDraftWord = {
+  text: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type CaptionDraftChunk = {
+  id: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  words?: CaptionDraftWord[];
+};
+
+export type CaptionDraftClip = {
+  clipIndex: number;
+  chunks: CaptionDraftChunk[];
+};
+
+export type TextOverlayPosition = "top" | "center" | "bottom";
+
+export type TextOverlay = {
+  id: string;
+  clipIndex: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: TextOverlayPosition;
+};
+
 export type QuoteReelMeta = {
   quote?: string;
   author?: string;
@@ -51,6 +81,31 @@ export type QuoteReelMeta = {
   };
 };
 
+export type SmartCropSegment = {
+  tStart: number;
+  tEnd: number;
+  centerXNorm: number;
+};
+
+export type SmartCropBox = {
+  segments: SmartCropSegment[];
+};
+
+export type EndingType = "none" | "freeze" | "fadeBlack" | "endCard";
+
+export type EndingPosition = "top" | "center" | "bottom";
+export type EndingEmojiPlacement = "left" | "right" | "center";
+
+export type EndingConfig = {
+  type: EndingType;
+  text?: string;
+  subtext?: string;
+  durationSec?: number;
+  emoji?: string;
+  emojiPlacement?: EndingEmojiPlacement;
+  position?: EndingPosition;
+};
+
 export type Job = {
   id: string;
   ownerId: string;
@@ -64,8 +119,10 @@ export type Job = {
   maxClips?: number;
   captionsEnabled?: boolean;
   captionStyle?: CaptionStyle;
+  blackAndWhite?: boolean;
 
   clips?: string[];
+  previewClips?: string[];
   captionedClips?: string[];
   captionedThumbs?: string[];
   stage?: JobStage;
@@ -78,6 +135,13 @@ export type Job = {
   quotePrompt?: string;
   quoteReelMeta?: QuoteReelMeta;
   shortsConfig?: ShortsConfig;
+
+  captionDrafts?: CaptionDraftClip[];
+  textOverlays?: TextOverlay[];
+  reviewReady?: boolean;
+
+  smartCrops?: (SmartCropBox | null)[];
+  ending?: EndingConfig;
 };
 
 const jobs: Job[] = [];

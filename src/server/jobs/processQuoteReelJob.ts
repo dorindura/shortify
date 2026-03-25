@@ -32,8 +32,8 @@ type RawQuoteReelMeta = {
 };
 
 const UNIQUE_IMAGE_COUNT = 15;
-const IMAGE_LOOPS = 2;
-const SECONDS_PER_IMAGE = 0.68;
+const IMAGE_LOOPS = 4;
+const SECONDS_PER_IMAGE = 0.32;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -90,8 +90,6 @@ export async function processQuoteReelJob(jobId: string) {
       targetCount: uniqueImageCount,
     });
 
-    const loopedImages = [...selectedUniqueImages, ...selectedUniqueImages];
-
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       tone,
@@ -111,11 +109,11 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobStage(jobId, "rendering", 65);
 
     const { videoPath, thumbPath } = await renderQuoteReelFromImages({
-      images: loopedImages,
-      secondsPerImage: SECONDS_PER_IMAGE,
+      images: selectedUniqueImages,
+      totalDurationSec: durationSec,
+      loopCount: IMAGE_LOOPS,
       quote: plan.quote,
       author: plan.author,
-      // overlayHandle: overlayHandle,
     });
 
     cleanupPaths.push(videoPath, thumbPath);

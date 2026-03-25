@@ -6,11 +6,36 @@ import { randomUUID } from "crypto";
 import { spawn } from "child_process";
 import type { CaptionStyle, JobAspect } from "@lib/jobsStore";
 import type { SmartCropBox, SmartCropSegment } from "@server/video/faceCrop";
+import { createOverlayAsset } from "@server/video/overlayAsset";
 
 const PUBLIC_SHORTS_DIR = path.join(process.cwd(), "public", "shorts");
 const PUBLIC_THUMBS_DIR = path.join(process.cwd(), "public", "thumbs");
 
 const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
+
+type TextOverlayPosition = "top" | "center" | "bottom";
+
+type OverlayEmojiPlacement = "left" | "right";
+
+type TextOverlay = {
+  id: string;
+  clipIndex: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: TextOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: OverlayEmojiPlacement;
+};
+
+type RenderOptions = {
+  aspect?: JobAspect;
+  style?: CaptionStyle;
+  captionsEnabled?: boolean;
+  smartCrop?: (SmartCropBox | null)[];
+  textOverlays?: TextOverlay[];
+  blackAndWhite?: boolean;
+};
 
 async function ensureDir(dir: string) {
   try {
@@ -44,13 +69,6 @@ function escapeForSubtitles(pathStr: string): string {
     .replace(/'/g, "\\'");
 }
 
-type RenderOptions = {
-  aspect?: JobAspect;
-  style?: CaptionStyle;
-  captionsEnabled?: boolean;
-  smartCrop?: (SmartCropBox | null)[];
-};
-
 function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
   if (!segments.length) {
     return "min(max(in_w*0.5-540\\,0)\\,in_w-1080)";
@@ -78,7 +96,7 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
     const next = sorted[i + 1];
 
     if (Math.abs(next.centerXNorm - prev.centerXNorm) < MIN_MOVE) {
-      continue; // ignore micro movement
+      continue;
     }
 
     const x0 = exprForCx(prev.centerXNorm);
@@ -94,6 +112,157 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
   }
 
   return raw;
+}
+
+function getOverlayAssetY(position: "top" | "center" | "bottom"): string {
+  if (position === "top") return "110";
+  if (position === "center") return "(H-h)/2";
+  return "H-h-260";
+}
+
+async function buildOverlayAssetFilterComplex(
+  overlays: TextOverlay[],
+): Promise<
+  { filterChains: string[]; finalLabel: string; assetPaths: string[] }
+> {
+  const validOverlays = overlays.filter(
+    (overlay) =>
+      Number.isFinite(overlay.startSec) &&
+      Number.isFinite(overlay.endSec) &&
+      overlay.endSec > overlay.startSec,
+  );
+
+  if (!validOverlays.length) {
+    return { filterChains: [], finalLabel: "[vbase]", assetPaths: [] };
+  }
+
+  const chains: string[] = [];
+  const assetPaths: string[] = [];
+
+  let currentLabel = "[vbase]";
+  let step = 0;
+
+  for (const overlay of validOverlays) {
+    const assetPath = await createOverlayAsset(overlay);
+    if (!assetPath) continue;
+
+    assetPaths.push(assetPath);
+
+    const escapedAssetPath = escapeForSubtitles(path.resolve(assetPath));
+    const assetLabel = `[ovr${step + 1}]`;
+    const nextLabel = `[v${++step}]`;
+    const y = getOverlayAssetY(overlay.position);
+
+    chains.push(`movie='${escapedAssetPath}'${assetLabel}`);
+    chains.push(
+      `${currentLabel}${assetLabel}overlay=` +
+        `x=(W-w)/2:` +
+        `y=${y}:` +
+        `enable='between(t\\,${overlay.startSec.toFixed(3)}\\,${
+          overlay.endSec.toFixed(3)
+        })'` +
+        `${nextLabel}`,
+    );
+
+    currentLabel = nextLabel;
+  }
+
+  return {
+    filterChains: chains,
+    finalLabel: currentLabel,
+    assetPaths,
+  };
+}
+
+export async function renderPreviewClips(
+  clips: string[],
+  opts?: {
+    aspect?: JobAspect;
+    smartCrop?: (SmartCropBox | null)[];
+  },
+): Promise<string[]> {
+  await ensureDir(PUBLIC_SHORTS_DIR);
+
+  const aspect = opts?.aspect ?? "horizontal";
+  const previewPaths: string[] = [];
+
+  for (let i = 0; i < clips.length; i++) {
+    const clipPath = clips[i];
+    const id = randomUUID();
+    const outVideoPath = path.join(PUBLIC_SHORTS_DIR, `${id}-preview.mp4`);
+
+    const filters: string[] = [];
+
+    if (aspect === "verticalLetterbox") {
+      filters.push(
+        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+      );
+    } else if (aspect === "vertical") {
+      const cropInfo = opts?.smartCrop?.[i] ?? null;
+
+      if (cropInfo?.segments?.length) {
+        const xExpr = buildCropXExprForSegments(cropInfo.segments);
+        filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
+      } else {
+        filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
+      }
+
+      filters.push("scale=1080:1920:flags=bicubic");
+    }
+
+    const ffArgs = filters.length > 0
+      ? [
+        "-y",
+        "-i",
+        clipPath,
+        "-vf",
+        filters.join(","),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "superfast",
+        "-crf",
+        "24",
+        "-maxrate",
+        "4M",
+        "-bufsize",
+        "7M",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-threads",
+        ffThreads,
+        "-movflags",
+        "+faststart",
+        outVideoPath,
+      ]
+      : [
+        "-y",
+        "-i",
+        clipPath,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "superfast",
+        "-crf",
+        "24",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-threads",
+        ffThreads,
+        "-movflags",
+        "+faststart",
+        outVideoPath,
+      ];
+
+    await runFfmpeg(ffArgs, `renderPreviewClips:${id}`);
+    previewPaths.push(outVideoPath);
+  }
+
+  return previewPaths;
 }
 
 export async function renderShortsWithSubtitles(
@@ -128,7 +297,6 @@ export async function renderShortsWithSubtitles(
     const publicVideoUrl = `/shorts/${id}.mp4`;
     const publicThumbUrl = `/thumbs/${id}.jpg`;
 
-    // subtitles filter only if enabled + path exists
     let subtitlesFilter: string | null = null;
     if (captionsEnabled && subsPath) {
       const escapedSubs = escapeForSubtitles(subsPath);
@@ -140,10 +308,10 @@ export async function renderShortsWithSubtitles(
         `subtitles='${escapedSubs}':fontsdir='${escapedFontsDir}'`;
     }
 
-    const filters: string[] = [];
+    const baseFilters: string[] = [];
 
     if (aspect === "verticalLetterbox") {
-      filters.push(
+      baseFilters.push(
         "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
       );
     }
@@ -153,27 +321,56 @@ export async function renderShortsWithSubtitles(
 
       if (cropInfo && cropInfo.segments && cropInfo.segments.length > 0) {
         const xExpr = buildCropXExprForSegments(cropInfo.segments);
-
-        filters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
+        baseFilters.push(`crop=in_h*(9/16):in_h:${xExpr}:0`);
       } else {
-        filters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
+        baseFilters.push("crop=in_h*(9/16):in_h:(in_w-oh*(9/16))/2:0");
       }
 
-      filters.push("scale=1080:1920:flags=bicubic");
+      baseFilters.push("scale=1080:1920:flags=bicubic");
+    }
+
+    if (opts?.blackAndWhite) {
+      baseFilters.push("colorchannelmixer=.3:.4:.3:0:.3:.4:.3:0:.3:.4:.3");
     }
 
     if (subtitlesFilter) {
-      filters.push(subtitlesFilter);
+      baseFilters.push(subtitlesFilter);
     }
 
-    const filter = filters.join(",");
+    const overlaysForClip = (opts?.textOverlays ?? []).filter(
+      (overlay) => overlay.clipIndex === i,
+    );
+
+    const filterComplexParts: string[] = [];
+
+    if (baseFilters.length > 0) {
+      filterComplexParts.push(`[0:v]${baseFilters.join(",")}[vbase]`);
+    } else {
+      filterComplexParts.push(`[0:v]null[vbase]`);
+    }
+
+    const {
+      filterChains: overlayChains,
+      finalLabel,
+      assetPaths: overlayAssetPaths,
+    } = await buildOverlayAssetFilterComplex(overlaysForClip);
+
+    if (overlayChains.length) {
+      filterComplexParts.push(...overlayChains);
+    }
+
+    const filterComplex = filterComplexParts.join(";");
 
     const ffArgs = [
       "-y",
       "-i",
       clipPath,
-      "-vf",
-      filter,
+      "-filter_complex",
+      filterComplex,
+      "-map",
+      finalLabel,
+      "-map",
+      "0:a?",
       "-c:v",
       "libx264",
       "-preset",
@@ -197,7 +394,12 @@ export async function renderShortsWithSubtitles(
 
     await runFfmpeg(ffArgs, `renderShortsWithSubtitles:${id}`);
 
-    // Thumbnail from final cropped video
+    await Promise.all(
+      (overlayAssetPaths ?? []).map((p) =>
+        fsPromises.unlink(p).catch(() => {})
+      ),
+    );
+
     await runFfmpeg(
       [
         "-y",
