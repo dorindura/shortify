@@ -129,8 +129,8 @@ function buildMainLineParts(ending: EndingConfig): EndingLineParts {
 
 export async function createEndingAsset(ending: EndingConfig): Promise<string | null> {
   const text = normalizeText(ending.text ?? "");
-  const subtext = normalizeText(ending.subtext);
-  const emojiPath = getEmojiAssetPath(ending.emoji);
+  const subtext = normalizeText(ending.subtext ?? "");
+  const emojiPath = getEmojiAssetPath(ending.emoji ?? "");
 
   if (!text && !subtext && !emojiPath) return null;
 
