@@ -1,7 +1,7 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
 export type ShortsSelectionMode = "auto" | "custom";
-export type JobType = "upload" | "url" | "quote_reel";
+export type JobType = "upload" | "url" | "quote_reel" | "multi_source_edit";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
 export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 
@@ -12,11 +12,13 @@ export type JobStage =
   | "captioning"
   | "scoring"
   | "clipping"
+  | "assembling"
+  | "review_ready"
   | "rendering"
   | "uploading"
   | "finished";
 
-export type JobGoal = "shorts" | "summary" | "quote_reel";
+export type JobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_edit";
 
 export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark";
 
@@ -106,6 +108,46 @@ export type EndingConfig = {
   position?: EndingPosition;
 };
 
+export type MultiSourceSegment = {
+  id: string;
+  sourceId: string;
+  url: string;
+  startSec: number;
+  endSec: number;
+  order: number;
+};
+
+export type FinalTimelineOverlayPosition = "top" | "center" | "bottom";
+
+export type FinalTimelineOverlay = {
+  id: string;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: FinalTimelineOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: "left" | "right";
+};
+
+export type MultiSourceBlackWhiteRange = {
+  id: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type MultiSourceReviewConfig = {
+  textOverlays?: FinalTimelineOverlay[];
+  blackWhiteRanges?: MultiSourceBlackWhiteRange[];
+  ending?: EndingConfig | null;
+};
+
+export type MultiSourceEditConfig = {
+  segments: MultiSourceSegment[];
+  draftVideoUrl?: string;
+  finalVideoUrl?: string;
+  reviewConfig?: MultiSourceReviewConfig;
+};
+
 export type Job = {
   id: string;
   ownerId: string;
@@ -120,6 +162,7 @@ export type Job = {
   captionsEnabled?: boolean;
   captionStyle?: CaptionStyle;
   blackAndWhite?: boolean;
+  multiSourceEditConfig?: MultiSourceEditConfig;
 
   clips?: string[];
   previewClips?: string[];
@@ -189,11 +232,7 @@ export function setJobCaptionedClips(id: string, urls: string[]) {
   }
 }
 
-export function setJobCaptionedResults(
-  id: string,
-  clipUrls: string[],
-  thumbUrls: string[],
-) {
+export function setJobCaptionedResults(id: string, clipUrls: string[], thumbUrls: string[]) {
   const job = jobs.find((j) => j.id === id);
   if (job) {
     job.captionedClips = clipUrls;

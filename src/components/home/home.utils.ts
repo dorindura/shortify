@@ -1,4 +1,4 @@
-import type { CustomRange } from "./home.types";
+import type { CustomRange, MultiSourceInput, MultiSourceSegmentDraft } from "./home.types";
 
 export function parseTimeToSeconds(input: string): number | null {
   const value = input.trim();
@@ -47,4 +47,48 @@ export function buildCustomRangesPayload(customRanges: CustomRange[]) {
         range.endSec > range.startSec &&
         range.endSec - range.startSec >= 0.6,
     );
+}
+
+export function buildMultiSourceSegmentsPayload(
+  sources: MultiSourceInput[],
+  segments: MultiSourceSegmentDraft[],
+) {
+  const sourceMap = new Map(sources.map((source) => [source.id, source.url.trim()]));
+
+  return segments
+    .map((segment) => {
+      const url = sourceMap.get(segment.sourceId)?.trim() ?? "";
+
+      return {
+        id: segment.id,
+        sourceId: segment.sourceId,
+        url,
+        startSec: parseTimeToSeconds(segment.startSec),
+        endSec: parseTimeToSeconds(segment.endSec),
+        order: segment.order,
+      };
+    })
+    .filter(
+      (
+        segment,
+      ): segment is {
+        id: string;
+        sourceId: string;
+        url: string;
+        startSec: number;
+        endSec: number;
+        order: number;
+      } =>
+        !!segment.id &&
+        !!segment.sourceId &&
+        !!segment.url &&
+        typeof segment.startSec === "number" &&
+        typeof segment.endSec === "number" &&
+        Number.isFinite(segment.startSec) &&
+        Number.isFinite(segment.endSec) &&
+        segment.endSec > segment.startSec &&
+        segment.endSec - segment.startSec >= 0.6 &&
+        Number.isFinite(segment.order),
+    )
+    .sort((a, b) => a.order - b.order);
 }

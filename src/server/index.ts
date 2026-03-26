@@ -21,9 +21,10 @@ async function main() {
   const { registerQuoteReelRoute } = await import("./routes/quoteReel");
   const { registerJobReviewRoute } = await import("./routes/review");
   const { registerJobRenderRoute } = await import("./routes/render");
-  const { registerJobClipPreviewRoute } = await import(
-    "./routes/jobClipPreview"
-  );
+  const { registerJobClipPreviewRoute } = await import("./routes/jobClipPreview");
+  const { registerMultiSourceEditRoute } = await import("./routes/multiSourceEdit");
+  const { registerMultiSourceEditReviewRoute } = await import("./routes/multiSourceEditReview");
+  const { registerMultiSourceEditRenderRoute } = await import("./routes/multiSourceEditRender");
 
   const app = Fastify({
     logger: true,
@@ -63,6 +64,9 @@ async function main() {
   await registerJobReviewRoute(app);
   await registerJobRenderRoute(app);
   await registerJobClipPreviewRoute(app);
+  await registerMultiSourceEditRoute(app);
+  await registerMultiSourceEditReviewRoute(app);
+  await registerMultiSourceEditRenderRoute(app);
 
   const port = Number(process.env.PORT ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });

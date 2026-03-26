@@ -14,9 +14,12 @@ import type {
   LocalJobGoal,
   LocalQuoteTone,
   LocalShortsSelectionMode,
+  MultiSourceInput,
+  MultiSourceSegmentDraft,
 } from "./home.types";
-import { buildCustomRangesPayload } from "./home.utils";
+import { buildCustomRangesPayload, buildMultiSourceSegmentsPayload } from "./home.utils";
 import JobReviewPanel from "@/components/home/review/JobReviewPanel";
+import MultiSourceReviewPanel from "@/components/home/review/MultiSourceReviewPanel";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const supabase = supabaseBrowser();
@@ -76,7 +79,14 @@ export default function HomePageClient() {
     { id: crypto.randomUUID(), startSec: "", endSec: "" },
   ]);
 
+  const [multiSourceInputs, setMultiSourceInputs] = useState<MultiSourceInput[]>([
+    { id: crypto.randomUUID(), url: "" },
+  ]);
+
+  const [multiSourceSegments, setMultiSourceSegments] = useState<MultiSourceSegmentDraft[]>([]);
+
   const isQuoteReel = jobGoal === "quote_reel";
+  const isMultiSourceEdit = jobGoal === "multi_source_edit";
 
   const hasActiveJobs =
     Array.isArray(jobs) && jobs.some((j) => j.status === "pending" || j.status === "processing");
@@ -98,6 +108,10 @@ export default function HomePageClient() {
         : "TikTok / Reels / Shorts (black bars)";
 
   const validCustomRangesCount = buildCustomRangesPayload(customRanges).length;
+  const validMultiSourceSegmentsCount = buildMultiSourceSegmentsPayload(
+    multiSourceInputs,
+    multiSourceSegments,
+  ).length;
 
   const reviewJob = jobs.find((job) => job.id === reviewJobId) ?? null;
 
@@ -116,6 +130,66 @@ export default function HomePageClient() {
       const next = prev.filter((range) => range.id !== id);
       return next.length ? next : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }];
     });
+  }
+
+  function addMultiSourceInput() {
+    setMultiSourceInputs((prev) => {
+      if (prev.length >= 5) return prev;
+      return [...prev, { id: crypto.randomUUID(), url: "" }];
+    });
+  }
+
+  function removeMultiSourceInput(id: string) {
+    setMultiSourceInputs((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return next.length ? next : [{ id: crypto.randomUUID(), url: "" }];
+    });
+
+    setMultiSourceSegments((prev) => prev.filter((segment) => segment.sourceId !== id));
+  }
+
+  function changeMultiSourceUrl(id: string, value: string) {
+    setMultiSourceInputs((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, url: value } : item)),
+    );
+  }
+
+  function addMultiSourceSegment(sourceId: string) {
+    setMultiSourceSegments((prev) => {
+      const nextOrder = prev.length;
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sourceId,
+          startSec: "",
+          endSec: "",
+          order: nextOrder,
+        },
+      ];
+    });
+  }
+
+  function removeMultiSourceSegment(id: string) {
+    setMultiSourceSegments((prev) =>
+      prev
+        .filter((segment) => segment.id !== id)
+        .map((segment, index) => ({
+          ...segment,
+          order: index,
+        })),
+    );
+  }
+
+  function changeMultiSourceSegment(id: string, field: "startSec" | "endSec", value: string) {
+    setMultiSourceSegments((prev) =>
+      prev.map((segment) => (segment.id === id ? { ...segment, [field]: value } : segment)),
+    );
+  }
+
+  function resetMultiSourceEditState() {
+    setMultiSourceInputs([{ id: crypto.randomUUID(), url: "" }]);
+    setMultiSourceSegments([]);
   }
 
   function openReview(job: Job) {
@@ -186,11 +260,57 @@ export default function HomePageClient() {
     }
   }
 
+  async function createMultiSourceEditJob() {
+    const segments = buildMultiSourceSegmentsPayload(multiSourceInputs, multiSourceSegments);
+
+    if (!segments.length) {
+      alert("Please add at least one valid multi-source segment.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await authedJsonFetch(`${API}/api/multi-source-edit`, {
+        method: "POST",
+        body: JSON.stringify({
+          aspect,
+          segments,
+        }),
+      });
+
+      if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Free limit reached. Upgrade to continue.");
+        setShowUpgrade(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to create multi-source edit.");
+        setShowUpgrade(false);
+        return;
+      }
+
+      setPaywallMessage(null);
+      setShowUpgrade(false);
+      resetMultiSourceEditState();
+      await fetchJobs();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (jobGoal === "quote_reel") {
       await createQuoteReelJob();
+      return;
+    }
+
+    if (jobGoal === "multi_source_edit") {
+      await createMultiSourceEditJob();
       return;
     }
 
@@ -425,6 +545,12 @@ export default function HomePageClient() {
     setSelectionMode("auto");
   }, [isQuoteReel]);
 
+  useEffect(() => {
+    if (!isMultiSourceEdit) return;
+    setUrl("");
+    setSelectionMode("auto");
+  }, [isMultiSourceEdit]);
+
   if (authLoading || !user) return <div className="p-6">Loading...</div>;
 
   return (
@@ -443,7 +569,8 @@ export default function HomePageClient() {
                 </h1>
               </div>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Auto-clipped shorts, AI summaries, and cinematic Quote Reels in one place.
+                Auto-clipped shorts, AI summaries, quote reels, and manual timeline edits in one
+                place.
               </p>
             </div>
           </div>
@@ -521,6 +648,17 @@ export default function HomePageClient() {
             setCaptionsEnabled={setCaptionsEnabled}
             captionStyle={captionStyle}
             setCaptionStyle={setCaptionStyle}
+            isMultiSourceEdit={isMultiSourceEdit}
+            multiSourceInputs={multiSourceInputs}
+            multiSourceSegments={multiSourceSegments}
+            onAddMultiSourceInput={addMultiSourceInput}
+            onRemoveMultiSourceInput={removeMultiSourceInput}
+            onChangeMultiSourceUrl={changeMultiSourceUrl}
+            onAddMultiSourceSegment={addMultiSourceSegment}
+            onRemoveMultiSourceSegment={removeMultiSourceSegment}
+            onChangeMultiSourceSegment={changeMultiSourceSegment}
+            validMultiSourceSegmentsCount={validMultiSourceSegmentsCount}
+            createMultiSourceEditJob={createMultiSourceEditJob}
           />
         </div>
 
@@ -536,9 +674,21 @@ export default function HomePageClient() {
           openReview={openReview}
         />
       </div>
+
       {reviewJob && reviewJob.jobGoal === "shorts" && reviewJob.reviewReady && (
         <JobReviewPanel
           job={reviewJob}
+          apiBaseUrl={API}
+          authedJsonFetch={authedJsonFetch}
+          onClose={() => setReviewJobId(null)}
+          onSaved={fetchJobs}
+          onRendered={fetchJobs}
+        />
+      )}
+
+      {reviewJob && reviewJob.jobGoal === "multi_source_edit" && reviewJob.reviewReady && (
+        <MultiSourceReviewPanel
+          job={reviewJob as any}
           apiBaseUrl={API}
           authedJsonFetch={authedJsonFetch}
           onClose={() => setReviewJobId(null)}

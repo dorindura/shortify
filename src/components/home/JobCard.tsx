@@ -27,7 +27,9 @@ export default function JobCard({
   const isProcessing = job.status === "processing";
   const isDone = job.status === "done";
   const isFailed = job.status === "failed";
-  const isReviewStep = job.jobGoal === "shorts" && job.reviewReady;
+  const isShortsReviewStep = job.jobGoal === "shorts" && job.reviewReady;
+  const isMultiSourceReviewStep = job.jobGoal === "multi_source_edit" && job.reviewReady;
+  const isReviewStep = isShortsReviewStep || isMultiSourceReviewStep;
 
   return (
     <div className="rounded-xl border border-slate-800/90 bg-slate-950/90 p-3 text-xs shadow-sm shadow-black/40">
@@ -62,15 +64,16 @@ export default function JobCard({
                 {deletingJobs[job.id] ? "Deleting..." : "Delete"}
               </button>
             )}
-            {job.jobGoal === "shorts" && job.reviewReady && (
-              <button
-                type="button"
-                onClick={() => openReview(job)}
-                className="rounded-full border border-emerald-500/60 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
-              >
-                Open Review
-              </button>
-            )}
+            {(job.jobGoal === "shorts" || job.jobGoal === "multi_source_edit") &&
+              job.reviewReady && (
+                <button
+                  type="button"
+                  onClick={() => openReview(job)}
+                  className="rounded-full border border-emerald-500/60 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                >
+                  Open Review
+                </button>
+              )}
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-400">
@@ -95,7 +98,9 @@ export default function JobCard({
               ? "Summary"
               : job.jobGoal === "quote_reel"
                 ? "Quote Reel"
-                : "Shorts"}
+                : job.jobGoal === "multi_source_edit"
+                  ? "Multi-source Edit"
+                  : "Shorts"}
             {job.jobGoal === "summary" && job.summaryTargetSec
               ? ` (~${job.summaryTargetSec}s)`
               : job.jobGoal === "quote_reel" && job.quoteReelMeta?.recommendedDurationSec
@@ -193,6 +198,12 @@ export default function JobCard({
       {job.jobGoal === "shorts" && job.reviewReady && (
         <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-200">
           This shorts job is waiting for caption/overlay review before final render.
+        </div>
+      )}
+
+      {job.jobGoal === "multi_source_edit" && job.reviewReady && (
+        <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] text-cyan-200">
+          This multi-source edit is ready for final timeline review before final render.
         </div>
       )}
 

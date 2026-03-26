@@ -31,6 +31,7 @@ import { extractAudioForWhisper } from "@server/video/audio";
 import { analyzeAudioEnergyForClip } from "@server/video/audioEnergy";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
 import { processQuoteReelJob } from "@server/jobs/processQuoteReelJob";
+import { processMultiSourceEditJob } from "@server/jobs/processMultiSourceEditJob";
 import {
   type CaptionDraftClip,
   generateCaptionDraftsForClips,
@@ -51,6 +52,11 @@ export async function processJob(jobId: string) {
 
   if (job.job_goal === "quote_reel") {
     await processQuoteReelJob(jobId);
+    return;
+  }
+
+  if (job.job_goal === "multi_source_edit") {
+    await processMultiSourceEditJob(jobId);
     return;
   }
 

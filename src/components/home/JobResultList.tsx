@@ -10,10 +10,17 @@ type Props = {
 export default function JobResultList({ job, isDownloading, downloadingKey, onDownload }: Props) {
   if (!job.captionedClips || job.captionedClips.length === 0) return null;
 
+  const resultLabel =
+    job.jobGoal === "quote_reel"
+      ? "Generated reel"
+      : job.jobGoal === "multi_source_edit"
+        ? "Final edited video"
+        : "Captioned shorts";
+
   return (
     <div className="mt-3 space-y-2">
       <div className="flex items-center justify-between text-[11px] text-slate-400">
-        <span>{job.jobGoal === "quote_reel" ? "Generated reel" : "Captioned shorts"}</span>
+        <span>{resultLabel}</span>
         <span className="text-[10px] text-slate-500">
           {job.captionedClips.length} file{job.captionedClips.length > 1 ? "s" : ""}
         </span>
@@ -22,7 +29,20 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
       <div className="grid grid-cols-1 gap-2">
         {job.captionedClips.map((url, idx) => {
           const thumb = job.captionedThumbs?.[idx];
-          const title = job.jobGoal === "quote_reel" ? "Quote Reel" : `Short ${idx + 1}`;
+          const title =
+            job.jobGoal === "quote_reel"
+              ? "Quote Reel"
+              : job.jobGoal === "multi_source_edit"
+                ? "Final Video"
+                : `Short ${idx + 1}`;
+
+          const filename =
+            job.jobGoal === "quote_reel"
+              ? "quote-reel.mp4"
+              : job.jobGoal === "multi_source_edit"
+                ? "multi-source-final.mp4"
+                : `short-${idx + 1}.mp4`;
+
           const key = `${job.id}:${idx}`;
           const isThisDownloading = isDownloading && downloadingKey === key;
 
@@ -46,13 +66,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
                 <div className="font-medium text-slate-100">{title}</div>
                 <div className="mt-1 flex flex-wrap gap-2">
                   <button
-                    onClick={() =>
-                      onDownload(
-                        url,
-                        job.jobGoal === "quote_reel" ? "quote-reel.mp4" : `short-${idx + 1}.mp4`,
-                        key,
-                      )
-                    }
+                    onClick={() => onDownload(url, filename, key)}
                     disabled={isDownloading}
                     className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                   >

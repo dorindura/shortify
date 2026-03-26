@@ -24,11 +24,13 @@ export default function GoalSection({
             ? `Summary ~${summaryTargetSec}s`
             : jobGoal === "quote_reel"
               ? "Quote Reel"
-              : "Multiple shorts"}
+              : jobGoal === "multi_source_edit"
+                ? "Multi-source Edit"
+                : "Multiple shorts"}
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
         <button
           type="button"
           onClick={() => setJobGoal("shorts")}
@@ -71,6 +73,21 @@ export default function GoalSection({
           <div className="font-semibold">Quote Reel (Pro)</div>
           <div className="mt-0.5 text-[11px] text-slate-400">
             Generate a faceless reel with a famous quote, curated visuals, and AI sound suggestions.
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setJobGoal("multi_source_edit")}
+          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+            jobGoal === "multi_source_edit"
+              ? "border-cyan-500 bg-slate-900/80 text-slate-50"
+              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-cyan-500/60"
+          }`}
+        >
+          <div className="font-semibold">Multi-Source Edit</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            Manually combine segments from up to 5 source URLs into one final timeline.
           </div>
         </button>
       </div>
