@@ -46,11 +46,7 @@ function escapeFilterPath(value: string): string {
 
 function getAspectFilters(aspect: JobAspect): string[] {
   if (aspect === "verticalLetterbox") {
-    return [
-      "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic",
-      "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
-      "format=yuv420p",
-    ];
+    return ["scale=1080:1920:flags=bicubic", "format=yuv420p"];
   }
 
   if (aspect === "vertical") {

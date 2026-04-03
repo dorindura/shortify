@@ -109,8 +109,9 @@ export async function cutSingleSegment(opts: {
 function getAspectFilters(aspect: JobAspect): string[] {
   if (aspect === "verticalLetterbox") {
     return [
-      "scale=720:1280:force_original_aspect_ratio=decrease:flags=bicubic",
-      "pad=720:1280:(ow-iw)/2:(oh-ih)/2:black",
+      "scale=-2:960:flags=bicubic",
+      "crop=720:960:(in_w-720)/2:0",
+      "pad=720:1280:0:(1280-960)/2:black",
       "fps=30",
       "format=yuv420p",
     ];

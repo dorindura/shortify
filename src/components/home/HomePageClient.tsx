@@ -55,7 +55,7 @@ export default function HomePageClient() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [aspect, setAspect] = useState<LocalJobAspect>("horizontal");
+  const [aspect, setAspect] = useState<LocalJobAspect>("vertical");
   const [clipDurationSec, setClipDurationSec] = useState<number>(30);
   const [maxClips, setMaxClips] = useState<number>(3);
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);

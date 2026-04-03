@@ -100,7 +100,7 @@ export default function OutputFormatSection({
               </div>
 
               <p className="text-[11px] text-slate-400">
-                Full video visible — padded to 9:16 with black bars.
+                Keeps more of the full action visible with black bars.
               </p>
             </div>
           </div>

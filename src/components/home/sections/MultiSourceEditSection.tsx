@@ -104,27 +104,25 @@ export default function MultiSourceEditSection({
                       className="grid gap-2 rounded-xl border border-slate-800 bg-slate-950/70 p-3 md:grid-cols-[1fr_1fr_auto]"
                     >
                       <div>
-                        <label className="text-[10px] font-medium text-slate-400">
-                          Start (sec)
-                        </label>
+                        <label className="text-[10px] font-medium text-slate-400">Start time</label>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.1"
+                          type="text"
+                          inputMode="decimal"
                           value={segment.startSec}
                           onChange={(e) => onChangeSegment(segment.id, "startSec", e.target.value)}
+                          placeholder="1:20 or 80"
                           className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-medium text-slate-400">End (sec)</label>
+                        <label className="text-[10px] font-medium text-slate-400">End time</label>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.1"
+                          type="text"
+                          inputMode="decimal"
                           value={segment.endSec}
                           onChange={(e) => onChangeSegment(segment.id, "endSec", e.target.value)}
+                          placeholder="2:05 or 125"
                           className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                         />
                       </div>

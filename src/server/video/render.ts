@@ -195,7 +195,7 @@ export async function renderPreviewClips(
 
     if (aspect === "verticalLetterbox") {
       filters.push(
-        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "scale=-2:1440:flags=bicubic,crop=1080:1440:(in_w-1080)/2:0,pad=1080:1920:0:(1920-1440)/2:black",
       );
     } else if (aspect === "vertical") {
       const cropInfo = opts?.smartCrop?.[i] ?? null;
@@ -312,7 +312,7 @@ export async function renderShortsWithSubtitles(
 
     if (aspect === "verticalLetterbox") {
       baseFilters.push(
-        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "scale=-2:1440:flags=bicubic,crop=1080:1440:(in_w-1080)/2:0,pad=1080:1920:0:(1920-1440)/2:black",
       );
     }
 
