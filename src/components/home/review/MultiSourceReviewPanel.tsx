@@ -549,9 +549,9 @@ export default function MultiSourceReviewPanel({
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-slate-100">Black & white ranges</div>
+                    <div className="text-sm font-semibold text-slate-100">Shadow Ranges</div>
                     <div className="text-[10px] text-slate-500">
-                      Apply black & white only to selected time ranges on the final timeline.
+                      Apply shadows only to selected time ranges on the final timeline.
                     </div>
                   </div>
 

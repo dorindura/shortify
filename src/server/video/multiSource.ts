@@ -90,7 +90,7 @@ export async function cutSingleSegment(opts: {
     "-preset",
     "superfast",
     "-crf",
-    "22",
+    "24",
     "-c:a",
     "aac",
     "-b:a",
@@ -109,8 +109,8 @@ export async function cutSingleSegment(opts: {
 function getAspectFilters(aspect: JobAspect): string[] {
   if (aspect === "verticalLetterbox") {
     return [
-      "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic",
-      "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+      "scale=720:1280:force_original_aspect_ratio=decrease:flags=bicubic",
+      "pad=720:1280:(ow-iw)/2:(oh-ih)/2:black",
       "fps=30",
       "format=yuv420p",
     ];
@@ -119,7 +119,7 @@ function getAspectFilters(aspect: JobAspect): string[] {
   if (aspect === "vertical") {
     return [
       "crop=in_h*(9/16):in_h:(in_w-in_h*(9/16))/2:0",
-      "scale=1080:1920:flags=bicubic",
+      "scale=720:1280:flags=bicubic",
       "fps=30",
       "format=yuv420p",
     ];
@@ -158,7 +158,7 @@ export async function normalizeSegmentForConcat(opts: {
     "-preset",
     "superfast",
     "-crf",
-    "22",
+    "24",
     "-pix_fmt",
     "yuv420p",
     "-c:a",
@@ -200,30 +200,7 @@ export async function concatPreparedSegments(opts: {
   await fs.writeFile(listPath, fileList, "utf8");
 
   try {
-    const args = [
-      "-y",
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      listPath,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "superfast",
-      "-crf",
-      "22",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      outPath,
-    ];
+    const args = ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath];
 
     await runCmd("ffmpeg", args, "multiSource:concatPreparedSegments");
     return outPath;

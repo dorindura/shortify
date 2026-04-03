@@ -74,17 +74,17 @@ export async function createOverlayAsset(overlay: TextOverlay): Promise<string |
 
   const outPath = path.join(TMP_OVERLAYS_DIR, `${randomUUID()}.png`);
 
-  const fontSize = 64;
+  const fontSize = 40;
   const strokeWidth = 3;
-  const emojiSize = 82;
-  const gap = 0;
-  const padX = 20;
+  const emojiSize = 62;
+  const gap = 10;
+  const padX = 28;
   const padY = 18;
 
   const hasText = !!text;
   const hasEmoji = !!emojiPath;
 
-  const textWidth = hasText ? estimateTextWidth(text, fontSize) : 0;
+  const textWidth = hasText ? estimateTextWidth(text, fontSize) + strokeWidth * 8 : 0;
   const textHeight = hasText ? Math.ceil(fontSize * 1.25) : 0;
 
   const emojiWidth = hasEmoji ? emojiSize : 0;
@@ -98,7 +98,7 @@ export async function createOverlayAsset(overlay: TextOverlay): Promise<string |
   const width = Math.max(1, contentWidth + padX * 2);
   const height = Math.max(1, contentHeight + padY * 2);
 
-  let currentX = padX;
+  let currentX = Math.round((width - contentWidth) / 2);
 
   let emojiSvg = "";
   let textSvg = "";

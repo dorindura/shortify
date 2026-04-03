@@ -163,77 +163,81 @@ export default function CreateJobPanel(props: Props) {
           </div>
         )}
 
-        <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <input
-              type="url"
-              placeholder="youtube.com/watch?v=..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              disabled={loading || isQuoteReel || isMultiSourceEdit}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              isQuoteReel ||
-              isMultiSourceEdit ||
-              (selectionMode === "custom" && validCustomRangesCount === 0)
-            }
-            className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="hidden sm:inline">Generate from URL</span>
-            <span className="sm:hidden">Generate</span>
-          </button>
-        </form>
+        {!isMultiSourceEdit && (
+          <>
+            <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <input
+                  type="url"
+                  placeholder="youtube.com/watch?v=..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={loading || isQuoteReel || isMultiSourceEdit}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  isMultiSourceEdit ||
+                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                }
+                className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="hidden sm:inline">Generate from URL</span>
+                <span className="sm:hidden">Generate</span>
+              </button>
+            </form>
 
-        <div className="flex items-center gap-3 text-[10px] tracking-[0.16em] text-slate-500 uppercase">
-          <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
-          or upload file
-          <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
-        </div>
+            <div className="flex items-center gap-3 text-[10px] tracking-[0.16em] text-slate-500 uppercase">
+              <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
+              or upload file
+              <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
+            </div>
 
-        <label
-          className={`group relative flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs transition ${
-            isQuoteReel || isMultiSourceEdit
-              ? "cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-500"
-              : "cursor-pointer border-slate-700/90 bg-slate-900/60 text-slate-300/90 hover:border-sky-500 hover:bg-slate-900/80"
-          }`}
-        >
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] font-medium text-sky-300">
-              Upload video
-            </span>
-            <span className="text-slate-400">MP4 / MOV / WebM</span>
-          </div>
-          <p className="max-w-xs text-[11px] text-slate-500">
-            Drop a file here or click to browse from your computer.
-          </p>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={handleFileChange}
-            disabled={
-              loading ||
-              isQuoteReel ||
-              isMultiSourceEdit ||
-              (selectionMode === "custom" && validCustomRangesCount === 0)
-            }
-            className={`absolute inset-0 opacity-0 ${
-              isQuoteReel || isMultiSourceEdit ? "cursor-not-allowed" : "cursor-pointer"
-            }`}
-          />
-        </label>
+            <label
+              className={`group relative flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs transition ${
+                isQuoteReel || isMultiSourceEdit
+                  ? "cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-500"
+                  : "cursor-pointer border-slate-700/90 bg-slate-900/60 text-slate-300/90 hover:border-sky-500 hover:bg-slate-900/80"
+              }`}
+            >
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] font-medium text-sky-300">
+                  Upload video
+                </span>
+                <span className="text-slate-400">MP4 / MOV / WebM</span>
+              </div>
+              <p className="max-w-xs text-[11px] text-slate-500">
+                Drop a file here or click to browse from your computer.
+              </p>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={handleFileChange}
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  isMultiSourceEdit ||
+                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                }
+                className={`absolute inset-0 opacity-0 ${
+                  isQuoteReel || isMultiSourceEdit ? "cursor-not-allowed" : "cursor-pointer"
+                }`}
+              />
+            </label>
+          </>
+        )}
 
         {isMultiSourceEdit && (
-          <div className="flex justify-end">
+          <div className="flex justify-center">
             <button
               type="button"
               onClick={createMultiSourceEditJob}
               disabled={loading || validMultiSourceSegmentsCount === 0}
-              className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-cyan-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-400 px-8 py-4 text-sm font-medium text-slate-950 shadow-lg shadow-cyan-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Create multi-source edit
             </button>

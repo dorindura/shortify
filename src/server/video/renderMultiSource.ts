@@ -33,7 +33,9 @@ function runFfmpeg(args: string[], logPrefix: string): Promise<void> {
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`[${logPrefix}] ffmpeg exited with code ${code}\n${stderr}`));
+      else {
+        reject(new Error(`[${logPrefix}] ffmpeg exited with code ${code}\n${stderr}`));
+      }
     });
   });
 }
@@ -163,7 +165,7 @@ export async function renderMultiSourceFinalVideo(opts: {
 
   const bwExpr = buildBlackWhiteEnableExpr(blackWhiteRanges);
   if (bwExpr) {
-    baseFilters.push(`colorchannelmixer=.3:.4:.3:0:.3:.4:.3:0:.3:.4:.3:enable='${bwExpr}'`);
+    baseFilters.push(`eq=brightness=-0.12:saturation=0.85:enable='${bwExpr}'`);
   }
 
   const filterComplexParts: string[] = [];
