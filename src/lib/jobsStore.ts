@@ -8,6 +8,9 @@ export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
 export type JobStage =
   | "queued"
   | "planning"
+  | "script_generation"
+  | "voiceover"
+  | "asset_selection"
   | "downloading"
   | "captioning"
   | "scoring"
@@ -20,7 +23,18 @@ export type JobStage =
 
 export type JobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_edit";
 
-export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark";
+export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark" | "emotional" | "stoic";
+
+export type QuoteReelMode = "manual_text" | "ai_text";
+
+export type QuoteReelVoicePreset =
+  | "dark_male"
+  | "storyteller"
+  | "soft_female"
+  | "motivational_male"
+  | "neutral";
+
+export type QuoteReelSegmentType = "hook" | "setup" | "build" | "payoff" | "cta";
 
 export type ShortsCustomRange = {
   id: string;
@@ -63,24 +77,70 @@ export type TextOverlay = {
   position: TextOverlayPosition;
 };
 
+export type QuoteReelSegment = {
+  id: string;
+  index: number;
+  type: QuoteReelSegmentType;
+  text: string;
+  voiceoverText: string;
+  visualTags: string[];
+  durationSec?: number;
+};
+
+export type QuoteReelAssetType = "video" | "image";
+
+export type QuoteReelAssetPick = {
+  segmentId: string;
+  assetType: QuoteReelAssetType;
+  assetPath: string;
+  sourceCategory?: string;
+  startSec?: number;
+  endSec?: number;
+};
+
+export type QuoteReelMusicSuggestion = {
+  label: string;
+  searchQuery: string;
+  reason?: string;
+};
+
+export type QuoteReelVoiceoverMeta = {
+  enabled: boolean;
+  voicePreset?: QuoteReelVoicePreset;
+  voiceId?: string;
+  modelId?: string;
+  audioPath?: string;
+  audioUrl?: string;
+  durationSec?: number;
+};
+
 export type QuoteReelMeta = {
-  quote?: string;
-  author?: string;
+  mode?: QuoteReelMode;
+  tone?: QuoteReelTone;
+
+  sourceText?: string;
+  generatedText?: string;
+  finalScript?: string;
+
+  targetDurationSec?: number;
+  minDurationSec?: number;
+  maxDurationSec?: number;
+  actualDurationSec?: number;
+
+  captionsEnabled?: boolean;
+  captionStyle?: CaptionStyle;
+
+  voiceEnabled?: boolean;
+  voicePreset?: QuoteReelVoicePreset;
+
+  segments?: QuoteReelSegment[];
+  selectedAssets?: QuoteReelAssetPick[];
+
   instagramCaption?: string;
   hashtags?: string[];
-  primaryFolder?: string;
-  fallbackFolder?: string;
-  selectedImages?: string[];
-  // overlayHandle?: string;
-  tone?: QuoteReelTone;
-  durationSec?: number;
-  recommendedDurationSec?: number;
-  recommendedImageCount?: number;
-  musicSuggestion?: {
-    label: string;
-    searchQuery: string;
-    reason?: string;
-  };
+  musicSuggestions?: QuoteReelMusicSuggestion[];
+
+  voiceover?: QuoteReelVoiceoverMeta;
 };
 
 export type SmartCropSegment = {
@@ -174,7 +234,6 @@ export type Job = {
   jobGoal?: JobGoal;
   summaryTargetSec?: number;
 
-  // NEW
   quotePrompt?: string;
   quoteReelMeta?: QuoteReelMeta;
   shortsConfig?: ShortsConfig;
@@ -252,7 +311,6 @@ export function updateJobStage(id: string, stage: JobStage, progress?: number) {
   }
 }
 
-// NEW: directly update progress
 export function updateJobProgress(id: string, progress: number) {
   const job = jobs.find((j) => j.id === id);
   if (job) {

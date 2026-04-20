@@ -12,7 +12,9 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVoicePreset,
   LocalShortsSelectionMode,
   MultiSourceInput,
   MultiSourceSegmentDraft,
@@ -73,6 +75,13 @@ export default function HomePageClient() {
 
   const [quotePrompt, setQuotePrompt] = useState("");
   const [quoteTone, setQuoteTone] = useState<LocalQuoteTone>("cinematic");
+  const [quoteMode, setQuoteMode] = useState<LocalQuoteReelMode>("ai_text");
+  const [quoteText, setQuoteText] = useState("");
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
+  const [targetDurationSec, setTargetDurationSec] = useState(70);
+  const [minDurationSec, setMinDurationSec] = useState(60);
+  const [maxDurationSec, setMaxDurationSec] = useState(95);
 
   const [selectionMode, setSelectionMode] = useState<LocalShortsSelectionMode>("auto");
   const [customRanges, setCustomRanges] = useState<CustomRange[]>([
@@ -223,18 +232,42 @@ export default function HomePageClient() {
   }
 
   async function createQuoteReelJob() {
-    if (!quotePrompt.trim()) return;
+    const canSubmit = quoteMode === "manual_text" ? !!quoteText.trim() : !!quotePrompt.trim();
+
+    if (!canSubmit) return;
 
     setLoading(true);
     try {
+      const payload =
+        quoteMode === "manual_text"
+          ? {
+              mode: quoteMode,
+              text: quoteText,
+              tone: quoteTone,
+              captionsEnabled,
+              captionStyle,
+              voiceEnabled,
+              voicePreset,
+              targetDurationSec,
+              minDurationSec,
+              maxDurationSec,
+            }
+          : {
+              mode: quoteMode,
+              prompt: quotePrompt,
+              tone: quoteTone,
+              captionsEnabled,
+              captionStyle,
+              voiceEnabled,
+              voicePreset,
+              targetDurationSec,
+              minDurationSec,
+              maxDurationSec,
+            };
+
       const res = await authedJsonFetch(`${API}/api/quote-reel`, {
         method: "POST",
-        body: JSON.stringify({
-          prompt: quotePrompt,
-          tone: quoteTone,
-          captionsEnabled,
-          captionStyle,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 402) {
@@ -246,7 +279,7 @@ export default function HomePageClient() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setPaywallMessage(data?.error ?? "Failed to create Quote Reel.");
+        setPaywallMessage(data?.error ?? "Failed to create AI Story Reel.");
         setShowUpgrade(false);
         return;
       }
@@ -254,6 +287,7 @@ export default function HomePageClient() {
       setPaywallMessage(null);
       setShowUpgrade(false);
       setQuotePrompt("");
+      setQuoteText("");
       await fetchJobs();
     } finally {
       setLoading(false);
@@ -659,6 +693,20 @@ export default function HomePageClient() {
             onChangeMultiSourceSegment={changeMultiSourceSegment}
             validMultiSourceSegmentsCount={validMultiSourceSegmentsCount}
             createMultiSourceEditJob={createMultiSourceEditJob}
+            quoteMode={quoteMode}
+            setQuoteMode={setQuoteMode}
+            quoteText={quoteText}
+            setQuoteText={setQuoteText}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
+            voicePreset={voicePreset}
+            setVoicePreset={setVoicePreset}
+            targetDurationSec={targetDurationSec}
+            setTargetDurationSec={setTargetDurationSec}
+            minDurationSec={minDurationSec}
+            setMinDurationSec={setMinDurationSec}
+            maxDurationSec={maxDurationSec}
+            setMaxDurationSec={setMaxDurationSec}
           />
         </div>
 

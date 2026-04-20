@@ -103,8 +103,13 @@ export default function JobCard({
                   : "Shorts"}
             {job.jobGoal === "summary" && job.summaryTargetSec
               ? ` (~${job.summaryTargetSec}s)`
-              : job.jobGoal === "quote_reel" && job.quoteReelMeta?.recommendedDurationSec
-                ? ` (~${job.quoteReelMeta.recommendedDurationSec}s)`
+              : job.jobGoal === "quote_reel" &&
+                  (job.quoteReelMeta?.actualDurationSec || job.quoteReelMeta?.targetDurationSec)
+                ? ` (~${Math.round(
+                    job.quoteReelMeta?.actualDurationSec ??
+                      job.quoteReelMeta?.targetDurationSec ??
+                      0,
+                  )}s)`
                 : ""}
           </span>
         )}
@@ -139,15 +144,56 @@ export default function JobCard({
         )}
       </div>
 
-      {job.quoteReelMeta?.quote && (
+      {job.jobGoal === "quote_reel" && (
         <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-900/60 p-3">
-          <div className="text-[11px] font-semibold text-slate-200">Generated quote</div>
-          <div className="mt-1 text-[12px] text-slate-100 italic">“{job.quoteReelMeta.quote}”</div>
-          {job.quoteReelMeta.author && (
-            <div className="mt-1 text-[10px] text-slate-400">— {job.quoteReelMeta.author}</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold text-slate-200">AI Story Reel</div>
+            {job.quoteReelMeta?.voiceover?.enabled && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5 text-[9px] text-fuchsia-200">
+                Voice:{" "}
+                {job.quoteReelMeta?.voiceover?.voicePreset ??
+                  job.quoteReelMeta?.voicePreset ??
+                  "on"}
+              </span>
+            )}
+          </div>
+
+          {job.quoteReelMeta?.finalScript && (
+            <div className="mt-2 text-[11px] text-slate-300">
+              <div className="mb-1 text-[10px] font-semibold text-slate-400">Script preview</div>
+              <div className="line-clamp-5 whitespace-pre-wrap text-slate-200">
+                {job.quoteReelMeta.finalScript}
+              </div>
+            </div>
           )}
 
-          {job.quoteReelMeta.hashtags?.length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
+            {job.quoteReelMeta?.mode && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                Mode: {job.quoteReelMeta.mode === "manual_text" ? "Manual text" : "AI prompt"}
+              </span>
+            )}
+
+            {job.quoteReelMeta?.tone && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                Tone: {job.quoteReelMeta.tone}
+              </span>
+            )}
+
+            {job.quoteReelMeta?.segments?.length ? (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                {job.quoteReelMeta.segments.length} segments
+              </span>
+            ) : null}
+
+            {job.quoteReelMeta?.selectedAssets?.length ? (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                {job.quoteReelMeta.selectedAssets.length} video picks
+              </span>
+            ) : null}
+          </div>
+
+          {job.quoteReelMeta?.hashtags?.length ? (
             <div className="mt-2 text-[10px] text-slate-500">
               {job.quoteReelMeta.hashtags.join(" ")}
             </div>

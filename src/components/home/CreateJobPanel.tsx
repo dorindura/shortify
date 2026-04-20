@@ -3,7 +3,9 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVoicePreset,
   LocalShortsSelectionMode,
   MultiSourceInput,
   MultiSourceSegmentDraft,
@@ -65,6 +67,20 @@ type Props = {
   onChangeMultiSourceSegment: (id: string, field: "startSec" | "endSec", value: string) => void;
   validMultiSourceSegmentsCount: number;
   createMultiSourceEditJob: () => Promise<void>;
+  quoteMode: LocalQuoteReelMode;
+  setQuoteMode: (value: LocalQuoteReelMode) => void;
+  quoteText: string;
+  setQuoteText: (value: string) => void;
+  voiceEnabled: boolean;
+  setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
+  voicePreset: LocalQuoteVoicePreset;
+  setVoicePreset: (value: LocalQuoteVoicePreset) => void;
+  targetDurationSec: number;
+  setTargetDurationSec: (value: number) => void;
+  minDurationSec: number;
+  setMinDurationSec: (value: number) => void;
+  maxDurationSec: number;
+  setMaxDurationSec: (value: number) => void;
 };
 
 export default function CreateJobPanel(props: Props) {
@@ -117,6 +133,20 @@ export default function CreateJobPanel(props: Props) {
     onChangeMultiSourceSegment,
     validMultiSourceSegmentsCount,
     createMultiSourceEditJob,
+    quoteMode,
+    setQuoteMode,
+    quoteText,
+    setQuoteText,
+    voiceEnabled,
+    setVoiceEnabled,
+    voicePreset,
+    setVoicePreset,
+    targetDurationSec,
+    setTargetDurationSec,
+    minDurationSec,
+    setMinDurationSec,
+    maxDurationSec,
+    setMaxDurationSec,
   } = props;
 
   return (
@@ -298,10 +328,26 @@ export default function CreateJobPanel(props: Props) {
         {!isMultiSourceEdit && (
           <QuoteReelSection
             jobGoal={jobGoal}
+            quoteMode={quoteMode}
+            setQuoteMode={setQuoteMode}
             quotePrompt={quotePrompt}
             setQuotePrompt={setQuotePrompt}
+            quoteText={quoteText}
+            setQuoteText={setQuoteText}
             quoteTone={quoteTone}
             setQuoteTone={setQuoteTone}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
+            voicePreset={voicePreset}
+            setVoicePreset={setVoicePreset}
+            targetDurationSec={targetDurationSec}
+            setTargetDurationSec={setTargetDurationSec}
+            minDurationSec={minDurationSec}
+            setMinDurationSec={setMinDurationSec}
+            maxDurationSec={maxDurationSec}
+            setMaxDurationSec={setMaxDurationSec}
+            captionsEnabled={captionsEnabled}
+            captionStyle={captionStyle}
             loading={loading}
             onCreateQuoteReel={createQuoteReelJob}
           />

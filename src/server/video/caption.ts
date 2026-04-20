@@ -19,7 +19,6 @@ async function ensureDir(dir: string) {
   }
 }
 
-// ---- Types for Whisper verbose_json ----
 type WhisperWord = {
   word: string;
   start: number;
@@ -63,7 +62,6 @@ export type CaptionDraftClip = {
 
 const DEFAULT_FONT = "Inter";
 
-// ===== Styling knobs =====
 const CHUNK_SIZE = 4;
 const LINE_FADE_IN_MS = 40;
 const LINE_FADE_OUT_MS = 80;
@@ -71,7 +69,6 @@ const KARAOKE_POP_SCALE = 118;
 const KARAOKE_POP_IN_MS = 70;
 const KARAOKE_POP_OUT_MS = 80;
 
-// Helpers
 function secondsToAssTime(sec: number): string {
   if (sec < 0) sec = 0;
   const hours = Math.floor(sec / 3600);
@@ -351,10 +348,6 @@ async function extractTinyAudioForWhisper(videoPath: string): Promise<string> {
   return outPath;
 }
 
-/**
- * If Whisper didn't give us word-level timestamps,
- * fabricate them evenly across the segment.
- */
 function synthesizeWordsFromSegment(seg: WhisperSegment): WhisperWord[] {
   const raw = normalizeText(seg.text || "");
   if (!raw) return [];
@@ -485,12 +478,11 @@ function buildDialogueTextFromDraftChunk(
   return `${lineFade()}${applyInlineStyle(safeAssText(chunk.text), captionStyle)}`;
 }
 
-async function transcribeClipToDraft(
-  clipPath: string,
+async function transcribeAudioPathToDraft(
+  audioPath: string,
   clipIndex: number,
+  cleanupAudioAfter = false,
 ): Promise<CaptionDraftClip> {
-  const audioPath = await extractTinyAudioForWhisper(clipPath);
-
   try {
     const resp = (await openai.audio.transcriptions.create({
       model: "whisper-1",
@@ -513,8 +505,18 @@ async function transcribeClipToDraft(
       chunks,
     };
   } finally {
-    await fsp.unlink(audioPath).catch(() => {});
+    if (cleanupAudioAfter) {
+      await fsp.unlink(audioPath).catch(() => {});
+    }
   }
+}
+
+async function transcribeClipToDraft(
+  clipPath: string,
+  clipIndex: number,
+): Promise<CaptionDraftClip> {
+  const audioPath = await extractTinyAudioForWhisper(clipPath);
+  return transcribeAudioPathToDraft(audioPath, clipIndex, true);
 }
 
 function draftClipToAss(
@@ -537,10 +539,6 @@ function draftClipToAss(
   return ass;
 }
 
-/**
- * NEW:
- * Generate JSON drafts that the user can edit later.
- */
 export async function generateCaptionDraftsForClips(clips: string[]): Promise<CaptionDraftClip[]> {
   await ensureDir(SUBS_DIR);
 
@@ -565,10 +563,32 @@ export async function generateCaptionDraftsForClips(clips: string[]): Promise<Ca
   return drafts;
 }
 
-/**
- * NEW:
- * Build ASS files from already existing drafts.
- */
+export async function generateCaptionDraftsForAudioFiles(
+  audioFiles: string[],
+): Promise<CaptionDraftClip[]> {
+  await ensureDir(SUBS_DIR);
+
+  const drafts: CaptionDraftClip[] = [];
+
+  for (let i = 0; i < audioFiles.length; i++) {
+    const audioPath = audioFiles[i];
+
+    try {
+      const draft = await transcribeAudioPathToDraft(audioPath, i, false);
+      drafts.push(draft);
+    } catch (err) {
+      console.error("[generateCaptionDraftsForAudioFiles] Failed for audio:", audioPath, err);
+
+      drafts.push({
+        clipIndex: i,
+        chunks: [],
+      });
+    }
+  }
+
+  return drafts;
+}
+
 export async function generateSubtitlesFromDrafts(
   drafts: CaptionDraftClip[],
   clips: string[],
@@ -599,11 +619,6 @@ export async function generateSubtitlesFromDrafts(
   return subtitleFiles;
 }
 
-/**
- * COMPAT:
- * Old flow still works.
- * Internally: draft -> ass
- */
 export async function generateSubtitlesForClips(
   clips: string[],
   options?: { captionStyle?: CaptionStyle; fontName?: string },
