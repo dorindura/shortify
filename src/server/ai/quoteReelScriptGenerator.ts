@@ -121,6 +121,96 @@ type AiQuoteReelScriptResponse = {
   segments?: AiQuoteReelSegment[];
 };
 
+function estimateTargetSegmentCount(targetDurationSec: number) {
+  const safeTarget = clamp(targetDurationSec || 70, 45, 180);
+
+  if (safeTarget <= 55) return 16;
+  if (safeTarget <= 70) return 20;
+  if (safeTarget <= 90) return 24;
+  if (safeTarget <= 120) return 30;
+
+  return 36;
+}
+
+function splitSegmentTextForReel(text: string, maxWords = 10): string[] {
+  const normalized = normalizeWhitespace(text);
+  if (!normalized) return [];
+
+  const sentenceParts = splitIntoSentences(normalized);
+  const chunks: string[] = [];
+
+  for (const sentence of sentenceParts) {
+    const smaller = splitLongSentence(sentence, maxWords);
+    chunks.push(...smaller);
+  }
+
+  return chunks.map((item) => normalizeWhitespace(item)).filter(Boolean);
+}
+
+function densifySegments(
+  segments: QuoteReelSegment[],
+  tone: QuoteReelTone,
+  targetDurationSec: number,
+  addCta = true,
+): QuoteReelSegment[] {
+  const desiredCount = estimateTargetSegmentCount(targetDurationSec);
+
+  const expanded = segments.flatMap((segment) => {
+    const textParts = splitSegmentTextForReel(segment.text, 10);
+    const voiceParts = splitSegmentTextForReel(
+      segment.voiceoverText || segment.text,
+      10,
+    );
+
+    const partCount = Math.max(textParts.length, voiceParts.length, 1);
+
+    if (partCount <= 1) {
+      return [segment];
+    }
+
+    return Array.from({ length: partCount }).map((_, index) => {
+      const text = textParts[index] || textParts[textParts.length - 1] ||
+        segment.text;
+
+      const voiceoverText = voiceParts[index] ||
+        voiceParts[voiceParts.length - 1] ||
+        segment.voiceoverText ||
+        text;
+
+      return {
+        id: randomUUID(),
+        index: 0,
+        type: segment.type,
+        text,
+        voiceoverText,
+        visualTags: segment.visualTags?.length
+          ? segment.visualTags.slice(0, 4)
+          : inferVisualTagsFromText(text, tone),
+      } satisfies QuoteReelSegment;
+    });
+  });
+
+  let finalSegments = expanded;
+
+  // if still too few, rebuild from final script-ish combined text
+  if (finalSegments.length < desiredCount * 0.7) {
+    const mergedText = finalSegments.map((s) => s.voiceoverText || s.text).join(
+      " ",
+    );
+    finalSegments = buildFallbackSegmentsFromText(mergedText, tone, addCta);
+  }
+
+  return finalSegments.map((segment, index, arr) => ({
+    ...segment,
+    id: segment.id || randomUUID(),
+    index,
+    type: sanitizeSegmentType(segment.type, index, arr.length),
+    visualTags: segment.visualTags?.length
+      ? segment.visualTags.slice(0, 4)
+      : inferVisualTagsFromText(segment.text, tone),
+  }));
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -297,7 +387,7 @@ function buildFallbackSegmentsFromText(
 ): QuoteReelSegment[] {
   const sentences = splitIntoSentences(text);
   const microSegments = sentences.flatMap((sentence) =>
-    splitLongSentence(sentence, 14)
+    splitLongSentence(sentence, 10)
   );
 
   const filtered = microSegments
@@ -381,14 +471,16 @@ function normalizeAiSegments(
 
       if (!text) return null;
 
+      const sanitizedTags = sanitizeVisualTags(item?.visualTags);
+
       return {
         id: randomUUID(),
         index,
         type: sanitizeSegmentType(item?.type, index, arr.length),
         text,
         voiceoverText: voiceoverText || text,
-        visualTags: sanitizeVisualTags(item?.visualTags).length
-          ? sanitizeVisualTags(item?.visualTags)
+        visualTags: sanitizedTags.length
+          ? sanitizedTags
           : inferVisualTagsFromText(text, tone),
       };
     })
@@ -592,8 +684,12 @@ You create long-form vertical social media story scripts for reels and TikTok.
 Goals:
 - Write a script that usually supports at least 60 seconds of spoken narration.
 - Make it emotionally engaging and retention-friendly.
-- Break the script into many short segments with frequent visual changes.
-- Each segment should represent one clear idea.
+- Break the script into MANY short segments.
+- Prefer around 18 to 30 segments for most 60 to 90 second reels.
+- Each segment should contain only one micro-idea.
+- Most segments should be 4 to 12 words on screen.
+- Frequent visual changes are critical.
+- Do not return long paragraph-like segments.
 - The pacing should feel premium and cinematic, not robotic.
 - The user wants lots of visual changes, almost every idea getting a new visual.
 
@@ -651,6 +747,9 @@ Approximate target words: ${targetWords}
 Approximate min words: ${minWords}
 Approximate max words: ${maxWords}
 Add CTA: ${input.addCta ? "yes" : "no"}
+Desired segment count: around ${
+          estimateTargetSegmentCount(input.targetDurationSec)
+        }
 
 Create a long-form story-driven reel script.
 `,
@@ -705,6 +804,10 @@ Rules:
 - If the source text is too short for the target duration, lightly expand it with a short intro/payoff/CTA if needed.
 - If addCta is false, do not include CTA.
 - If addCta is true, keep CTA subtle.
+- Break the text into many short micro-segments.
+- Prefer around 18 to 30 segments for a 60 to 90 second reel.
+- Most on-screen text segments should stay short.
+- Frequent visual changes are mandatory.
 
 Output JSON shape:
 {
@@ -739,6 +842,9 @@ Minimum duration seconds: ${input.minDurationSec}
 Maximum duration seconds: ${input.maxDurationSec}
 Source text word count: ${wordCount}
 Desired minimum words for timing: ${minWords}
+Desired segment count: around ${
+          estimateTargetSegmentCount(input.targetDurationSec)
+        }
 Add CTA: ${input.addCta ? "yes" : "no"}
 
 User text:
@@ -783,10 +889,17 @@ export async function generateQuoteReelScriptPlan(
       const finalScript =
         normalizeWhitespace(ai.finalScript || ai.generatedText || sourceText) ||
         sourceText;
-      const segments = normalizeAiSegments(
+      const baseSegments = normalizeAiSegments(
         ai.segments,
         input.tone,
         finalScript,
+        addCta,
+      );
+
+      const segments = densifySegments(
+        baseSegments,
+        input.tone,
+        targetDurationSec,
         addCta,
       );
 
@@ -812,9 +925,16 @@ export async function generateQuoteReelScriptPlan(
         error,
       );
 
-      const fallbackSegments = buildFallbackSegmentsFromText(
+      const fallbackBaseSegments = buildFallbackSegmentsFromText(
         sourceText,
         input.tone,
+        addCta,
+      );
+
+      const fallbackSegments = densifySegments(
+        fallbackBaseSegments,
+        input.tone,
+        targetDurationSec,
         addCta,
       );
 
@@ -852,10 +972,17 @@ export async function generateQuoteReelScriptPlan(
     throw new Error("AI text mode returned no finalScript");
   }
 
-  const segments = normalizeAiSegments(
+  const baseSegments = normalizeAiSegments(
     ai.segments,
     input.tone,
     finalScript,
+    addCta,
+  );
+
+  const segments = densifySegments(
+    baseSegments,
+    input.tone,
+    targetDurationSec,
     addCta,
   );
 

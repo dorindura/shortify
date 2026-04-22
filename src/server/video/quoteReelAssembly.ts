@@ -14,11 +14,12 @@ const CANVAS_H = 1920;
 
 // Inner cinematic video card (smaller, centered)
 const CARD_W = 900;
-const CARD_H = 1600;
+const CARD_H = 640;
+const CARD_RADIUS = 36;
 
 // Soft shadow offset
-const SHADOW_X = 8;
-const SHADOW_Y = 14;
+const SHADOW_X = 0;
+const SHADOW_Y = 18;
 
 type PreparedSegment = {
   segmentId: string;
@@ -57,7 +58,11 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function runCmd(cmd: string, args: string[], logPrefix: string): Promise<string> {
+function runCmd(
+  cmd: string,
+  args: string[],
+  logPrefix: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     console.log(`[${logPrefix}] Running ${cmd} ${args.join(" ")}`);
 
@@ -80,7 +85,9 @@ function runCmd(cmd: string, args: string[], logPrefix: string): Promise<string>
       if (code === 0) {
         resolve((stdout || stderr).trim());
       } else {
-        reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
+        reject(
+          new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`),
+        );
       }
     });
   });
@@ -153,13 +160,16 @@ function getSegmentTargetDurations(
 
     if (segment.type === "hook") weight += 2;
     if (segment.type === "payoff") weight += 1;
-    if (segment.type === "cta") weight = Math.max(weight - 1, 3);
+    if (segment.type === "cta") weight = Math.max(weight - 2, 3);
 
     return weight;
   });
 
-  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || segments.length;
-  const raw = weights.map((weight) => (normalizedTarget * weight) / totalWeight);
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) ||
+    segments.length;
+  const raw = weights.map((weight) =>
+    (normalizedTarget * weight) / totalWeight
+  );
 
   const clamped = raw.map((value, index) => {
     const segment = segments[index];
@@ -167,7 +177,7 @@ function getSegmentTargetDurations(
       .split(" ")
       .filter(Boolean).length;
 
-    const minDur = segment.type === "hook" ? 1.6 : 1.4;
+    const minDur = segment.type === "hook" ? 2.8 : 2.2;
     const maxDur = words >= 16 ? 5.8 : 4.6;
 
     return clamp(value, minDur, maxDur);
@@ -180,19 +190,47 @@ function getSegmentTargetDurations(
   }
 
   const scale = normalizedTarget / clampedTotal;
-  return clamped.map((value) => clamp(value * scale, 1.25, 6.5));
+  return clamped.map((value) => clamp(value * scale, 2.2, 6.5));
 }
 
 function buildCinematicCanvasFilter(aspect: JobAspect): string {
   const base = getCardVideoBaseFilters(aspect).join(",");
 
   return [
-    `[0:v]${base}[vid]`,
     `color=c=black:s=${CANVAS_W}x${CANVAS_H}:r=30[bg]`,
-    `[vid]split=2[vidmain][vidshadowsrc]`,
-    `[vidshadowsrc]boxblur=18:8,eq=brightness=-0.55[shadow]`,
-    `[bg][shadow]overlay=(W-w)/2+${SHADOW_X}:(H-h)/2+${SHADOW_Y}[bgshadow]`,
-    `[bgshadow][vidmain]overlay=(W-w)/2:(H-h)/2[vout]`,
+    `[0:v]${base},format=rgba[vidraw]`,
+
+    // rounded rectangle alpha mask
+    `nullsrc=s=${CARD_W}x${CARD_H},format=gray,geq=` +
+    `'lum=` +
+    `if(` +
+    `lte(abs(X-W/2),W/2-${CARD_RADIUS})*lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
+    `255,` +
+    `if(` +
+    `lte(abs(X-W/2),W/2-${CARD_RADIUS})+lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
+    `255,` +
+    `if(` +
+    `lte(` +
+    `(abs(X-W/2)-(W/2-${CARD_RADIUS}))*(abs(X-W/2)-(W/2-${CARD_RADIUS})) + ` +
+    `(abs(Y-H/2)-(H/2-${CARD_RADIUS}))*(abs(Y-H/2)-(H/2-${CARD_RADIUS})),` +
+    `${CARD_RADIUS * CARD_RADIUS}` +
+    `),` +
+    `255,` +
+    `0` +
+    `)` +
+    `)` +
+    `)'[mask]`,
+
+    `[vidraw][mask]alphamerge[vidrounded]`,
+
+    // shadow
+    `[vidrounded]split=2[vidmain][vidshadowbase]`,
+    `[vidshadowbase]alphaextract,boxblur=28:12[shadowalpha]`,
+    `color=c=black@0.42:s=${CARD_W}x${CARD_H}:r=30,format=rgba[shadowbase]`,
+    `[shadowbase][shadowalpha]alphamerge[shadow]`,
+
+    `[bg][shadow]overlay=(W-${CARD_W})/2+${SHADOW_X}:(H-${CARD_H})/2+${SHADOW_Y}[bgshadow]`,
+    `[bgshadow][vidmain]overlay=(W-${CARD_W})/2:(H-${CARD_H})/2[vout]`,
   ].join(";");
 }
 
@@ -276,7 +314,10 @@ async function concatPreparedSegments(opts: {
     throw new Error("No prepared segments to concatenate");
   }
 
-  const listPath = path.join(path.dirname(outputPath), `${randomUUID()}-concat.txt`);
+  const listPath = path.join(
+    path.dirname(outputPath),
+    `${randomUUID()}-concat.txt`,
+  );
 
   const fileList = inputPaths
     .map((p) => `file '${path.resolve(p).replace(/'/g, "'\\''")}'`)
@@ -285,7 +326,18 @@ async function concatPreparedSegments(opts: {
   await fs.writeFile(listPath, fileList, "utf8");
 
   try {
-    const args = ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outputPath];
+    const args = [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      listPath,
+      "-c",
+      "copy",
+      outputPath,
+    ];
 
     await runCmd("ffmpeg", args, "quoteReelAssembly:concatPreparedSegments");
   } finally {
@@ -399,10 +451,13 @@ export async function assembleQuoteReel(
       typeof input.targetDurationSec === "number" && input.targetDurationSec > 0
         ? input.targetDurationSec
         : input.voiceoverAudioPath
-          ? await probeDuration(input.voiceoverAudioPath)
-          : 70;
+        ? await probeDuration(input.voiceoverAudioPath)
+        : 70;
 
-    const segmentDurations = getSegmentTargetDurations(segments, targetDurationSec);
+    const segmentDurations = getSegmentTargetDurations(
+      segments,
+      targetDurationSec,
+    );
 
     for (let i = 0; i < segments.length; i += 1) {
       const segment = segments[i];
@@ -413,8 +468,16 @@ export async function assembleQuoteReel(
       }
 
       const assetDuration = await probeDuration(assetPick.assetPath);
-      const segmentDuration = clamp(segmentDurations[i], 1.25, Math.max(1.25, assetDuration));
-      const startSec = chooseClipStart(assetDuration, Math.min(segmentDuration, assetDuration), i);
+      const segmentDuration = clamp(
+        segmentDurations[i],
+        1.25,
+        Math.max(1.25, assetDuration),
+      );
+      const startSec = chooseClipStart(
+        assetDuration,
+        Math.min(segmentDuration, assetDuration),
+        i,
+      );
 
       const preparedPath = path.join(
         preparedDir,
@@ -475,7 +538,9 @@ export async function assembleQuoteReel(
       actualDurationSec,
     };
   } catch (error) {
-    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(
+      () => {},
+    );
     throw error;
   }
 }

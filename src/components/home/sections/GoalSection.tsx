@@ -30,7 +30,7 @@ export default function GoalSection({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-3">
         <button
           type="button"
           onClick={() => setJobGoal("shorts")}
@@ -46,20 +46,20 @@ export default function GoalSection({
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setJobGoal("summary")}
-          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-            jobGoal === "summary"
-              ? "border-emerald-500 bg-slate-900/80 text-slate-50"
-              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"
-          }`}
-        >
-          <div className="font-semibold">AI Story Summary (Pro)</div>
-          <div className="mt-0.5 text-[11px] text-slate-400">
-            One highlight reel around a target length.
-          </div>
-        </button>
+        {/*<button*/}
+        {/*  type="button"*/}
+        {/*  onClick={() => setJobGoal("summary")}*/}
+        {/*  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${*/}
+        {/*    jobGoal === "summary"*/}
+        {/*      ? "border-emerald-500 bg-slate-900/80 text-slate-50"*/}
+        {/*      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"*/}
+        {/*  }`}*/}
+        {/*>*/}
+        {/*  <div className="font-semibold">AI Story Summary (Pro)</div>*/}
+        {/*  <div className="mt-0.5 text-[11px] text-slate-400">*/}
+        {/*    One highlight reel around a target length.*/}
+        {/*  </div>*/}
+        {/*</button>*/}
 
         <button
           type="button"
