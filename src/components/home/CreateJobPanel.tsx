@@ -3,6 +3,7 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
   LocalQuoteVoicePreset,
@@ -71,6 +72,8 @@ type Props = {
   setQuoteMode: (value: LocalQuoteReelMode) => void;
   quoteText: string;
   setQuoteText: (value: string) => void;
+  quoteCaptionPreset: LocalQuoteCaptionPreset;
+  setQuoteCaptionPreset: (value: LocalQuoteCaptionPreset) => void;
   voiceEnabled: boolean;
   setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   voicePreset: LocalQuoteVoicePreset;
@@ -137,6 +140,8 @@ export default function CreateJobPanel(props: Props) {
     setQuoteMode,
     quoteText,
     setQuoteText,
+    quoteCaptionPreset,
+    setQuoteCaptionPreset,
     voiceEnabled,
     setVoiceEnabled,
     voicePreset,
@@ -348,12 +353,15 @@ export default function CreateJobPanel(props: Props) {
             setMaxDurationSec={setMaxDurationSec}
             captionsEnabled={captionsEnabled}
             captionStyle={captionStyle}
+            setCaptionsEnabled={setCaptionsEnabled}
+            quoteCaptionPreset={quoteCaptionPreset}
+            setQuoteCaptionPreset={setQuoteCaptionPreset}
             loading={loading}
             onCreateQuoteReel={createQuoteReelJob}
           />
         )}
 
-        {!isMultiSourceEdit && (
+        {!isMultiSourceEdit && !isQuoteReel && (
           <CaptionsSection
             captionsEnabled={captionsEnabled}
             setCaptionsEnabled={setCaptionsEnabled}

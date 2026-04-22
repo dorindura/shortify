@@ -12,6 +12,8 @@ export type LocalQuoteVoicePreset =
   | "motivational_male"
   | "neutral";
 
+export type LocalQuoteCaptionPreset = "card_bottom_karaoke" | "card_center_word_by_word";
+
 export type CustomRange = {
   id: string;
   startSec: string;

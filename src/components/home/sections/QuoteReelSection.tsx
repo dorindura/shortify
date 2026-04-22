@@ -1,5 +1,5 @@
 import type {
-  LocalCaptionStyle,
+  LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
   LocalQuoteVoicePreset,
@@ -26,7 +26,9 @@ type Props = {
   maxDurationSec: number;
   setMaxDurationSec: (value: number) => void;
   captionsEnabled: boolean;
-  captionStyle: LocalCaptionStyle;
+  setCaptionsEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
+  quoteCaptionPreset: LocalQuoteCaptionPreset;
+  setQuoteCaptionPreset: (value: LocalQuoteCaptionPreset) => void;
   loading: boolean;
   onCreateQuoteReel: () => Promise<void>;
 };
@@ -52,7 +54,9 @@ export default function QuoteReelSection({
   maxDurationSec,
   setMaxDurationSec,
   captionsEnabled,
-  captionStyle,
+  setCaptionsEnabled,
+  quoteCaptionPreset,
+  setQuoteCaptionPreset,
   loading,
   onCreateQuoteReel,
 }: Props) {
@@ -66,8 +70,8 @@ export default function QuoteReelSection({
         <div>
           <div className="text-xs font-semibold text-slate-200">AI Story Reel settings</div>
           <div className="mt-0.5 text-[10px] text-slate-500">
-            60s+ vertical faceless reel with fast scene changes, ElevenLabs voice-over, and synced
-            captions.
+            60s+ vertical faceless reel with fast scene changes, ElevenLabs voice-over, and quote
+            reel specific captions.
           </div>
         </div>
 
@@ -210,6 +214,67 @@ export default function QuoteReelSection({
         </div>
       </div>
 
+      <div className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-medium text-slate-200">Captions</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">
+              Choose one quote reel caption behavior.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCaptionsEnabled((prev) => !prev)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
+              captionsEnabled
+                ? "border-emerald-400 bg-emerald-500/20"
+                : "border-slate-600 bg-slate-800/80"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 rounded-full bg-slate-100 shadow transition ${
+                captionsEnabled ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className={`mt-3 grid gap-2 md:grid-cols-2 ${!captionsEnabled ? "opacity-50" : ""}`}>
+          <button
+            type="button"
+            disabled={!captionsEnabled}
+            onClick={() => setQuoteCaptionPreset("card_bottom_karaoke")}
+            className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+              quoteCaptionPreset === "card_bottom_karaoke"
+                ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+            }`}
+          >
+            <div className="font-semibold">Bottom karaoke</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Caption line near the bottom of the centered video card.
+            </div>
+          </button>
+
+          <button
+            type="button"
+            disabled={!captionsEnabled}
+            onClick={() => setQuoteCaptionPreset("card_center_word_by_word")}
+            className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+              quoteCaptionPreset === "card_center_word_by_word"
+                ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+            }`}
+          >
+            <div className="font-semibold">Center word-by-word</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              One word at a time in the center of the video card.
+            </div>
+          </button>
+        </div>
+      </div>
+
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
         <div>
           <div className="text-[11px] font-medium text-slate-200">Voice-over</div>
@@ -233,16 +298,6 @@ export default function QuoteReelSection({
             }`}
           />
         </button>
-      </div>
-
-      <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-3 text-[10px] text-slate-400">
-        <div>
-          Captions:{" "}
-          <span className="text-slate-200">{captionsEnabled ? "Enabled" : "Disabled"}</span>
-        </div>
-        <div className="mt-1">
-          Caption style: <span className="text-slate-200">{captionStyle}</span>
-        </div>
       </div>
 
       <button

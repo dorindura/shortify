@@ -12,6 +12,7 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
   LocalQuoteVoicePreset,
@@ -79,6 +80,8 @@ export default function HomePageClient() {
   const [quoteText, setQuoteText] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
+  const [quoteCaptionPreset, setQuoteCaptionPreset] =
+    useState<LocalQuoteCaptionPreset>("card_bottom_karaoke");
   const [targetDurationSec, setTargetDurationSec] = useState(70);
   const [minDurationSec, setMinDurationSec] = useState(60);
   const [maxDurationSec, setMaxDurationSec] = useState(95);
@@ -246,6 +249,7 @@ export default function HomePageClient() {
               tone: quoteTone,
               captionsEnabled,
               captionStyle,
+              captionPreset: quoteCaptionPreset,
               voiceEnabled,
               voicePreset,
               targetDurationSec,
@@ -258,6 +262,7 @@ export default function HomePageClient() {
               tone: quoteTone,
               captionsEnabled,
               captionStyle,
+              captionPreset: quoteCaptionPreset,
               voiceEnabled,
               voicePreset,
               targetDurationSec,
@@ -697,6 +702,8 @@ export default function HomePageClient() {
             setQuoteMode={setQuoteMode}
             quoteText={quoteText}
             setQuoteText={setQuoteText}
+            quoteCaptionPreset={quoteCaptionPreset}
+            setQuoteCaptionPreset={setQuoteCaptionPreset}
             voiceEnabled={voiceEnabled}
             setVoiceEnabled={setVoiceEnabled}
             voicePreset={voicePreset}

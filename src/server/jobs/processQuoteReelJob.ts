@@ -22,6 +22,7 @@ import {
 import { renderShortsWithSubtitles } from "@/server/video/render";
 import type {
   CaptionStyle,
+  QuoteReelCaptionPreset,
   QuoteReelMeta,
   QuoteReelMode,
   QuoteReelTone,
@@ -29,6 +30,10 @@ import type {
 } from "@/lib/jobsStore";
 
 type SubtitleFile = string | { path: string };
+
+function isQuoteReelCaptionPreset(value: unknown): value is QuoteReelCaptionPreset {
+  return value === "card_bottom_karaoke" || value === "card_center_word_by_word";
+}
 
 function subtitleToPath(s: SubtitleFile): string {
   return typeof s === "string" ? s : s.path;
@@ -127,6 +132,12 @@ export async function processQuoteReelJob(jobId: string) {
         ? (existingMeta.voiceover?.voicePreset as QuoteReelVoicePreset)
         : "storyteller";
 
+    const captionPreset: QuoteReelCaptionPreset = isQuoteReelCaptionPreset(
+      existingMeta.captionPreset,
+    )
+      ? existingMeta.captionPreset
+      : "card_bottom_karaoke";
+
     const targetDurationSec = clamp(Number(existingMeta.targetDurationSec ?? 70), 45, 180);
     const minDurationSec = clamp(Number(existingMeta.minDurationSec ?? 60), 45, 180);
     const maxDurationSec = clamp(Number(existingMeta.maxDurationSec ?? 95), 50, 240);
@@ -141,6 +152,7 @@ export async function processQuoteReelJob(jobId: string) {
       tone,
       captionsEnabled,
       captionStyle,
+      captionPreset,
       voiceEnabled,
       voicePreset,
       voiceover: {
@@ -178,6 +190,7 @@ export async function processQuoteReelJob(jobId: string) {
       maxDurationSec,
       captionsEnabled,
       captionStyle,
+      captionPreset,
       voiceEnabled,
       voicePreset,
       voiceover: {
@@ -240,6 +253,7 @@ export async function processQuoteReelJob(jobId: string) {
         actualDurationSec: voiceover.durationSec,
         captionsEnabled,
         captionStyle,
+        captionPreset,
         voiceEnabled,
         voicePreset,
         segments: scriptPlan.segments,
@@ -270,6 +284,7 @@ export async function processQuoteReelJob(jobId: string) {
       actualDurationSec: voiceoverMetaPatch?.durationSec ?? undefined,
       captionsEnabled,
       captionStyle,
+      captionPreset,
       voiceEnabled,
       voicePreset,
       segments: scriptPlan.segments,
@@ -310,6 +325,7 @@ export async function processQuoteReelJob(jobId: string) {
 
       const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, [baseVideoPath], {
         captionStyle,
+        quoteReelCaptionPreset: captionPreset,
       });
 
       const subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);
@@ -363,6 +379,7 @@ export async function processQuoteReelJob(jobId: string) {
       actualDurationSec: assembly.actualDurationSec,
       captionsEnabled,
       captionStyle,
+      captionPreset,
       voiceEnabled,
       voicePreset,
       segments: scriptPlan.segments,
