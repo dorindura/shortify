@@ -337,6 +337,8 @@ export async function processQuoteReelJob(jobId: string) {
         aspect: "vertical",
         style: captionStyle,
         captionsEnabled: true,
+        fadeOutSec: 1.5,
+        qualityPreset: "premium",
       });
 
       finalVideoPath = toLocalAssetPath(rendered.videos[0]);
