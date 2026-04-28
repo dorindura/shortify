@@ -65,6 +65,8 @@ type SubtitleGenerationOptions = {
   captionStyle?: CaptionStyle;
   fontName?: string;
   quoteReelCaptionPreset?: QuoteReelCaptionPreset;
+  captionOffsetSec?: number;
+  premiumKeywords?: string[];
 };
 
 const DEFAULT_FONT = "Inter";
@@ -83,17 +85,37 @@ const QUOTE_CARD_CENTER_X = 540;
 const QUOTE_CARD_CENTER_Y = 960;
 const QUOTE_CARD_BOTTOM_TEXT_Y = 1285;
 
+const PREMIUM_FONT = process.env.QUOTE_REEL_CAPTION_FONT?.trim() || DEFAULT_FONT;
+
+const DEFAULT_CAPTION_OFFSET_SEC = Number(process.env.QUOTE_REEL_CAPTION_OFFSET_SEC ?? 0);
+
+const PREMIUM_HIGHLIGHT_WORDS = new Set(
+  (
+    process.env.QUOTE_REEL_HIGHLIGHT_WORDS ??
+    "never,pain,discipline,respect,alone,truth,love,forgive,peace,strong,broken,healing,remember,change,life,heart,mind,silence,power"
+  )
+    .split(",")
+    .map((word) => word.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+// ASS colors are BGR, not RGB.
+// &H0000D7FF& = warm yellow/orange-ish highlight.
+const PREMIUM_HIGHLIGHT_COLOR = "&H0000D7FF&";
+const PREMIUM_WHITE_COLOR = "&H00FFFFFF&";
+const PREMIUM_OUTLINE_COLOR = "&HEE000000&";
+
 function secondsToAssTime(sec: number): string {
-  if (sec < 0) sec = 0;
-  const hours = Math.floor(sec / 3600);
-  const minutes = Math.floor((sec % 3600) / 60);
-  const seconds = Math.floor(sec % 60);
-  const centiseconds = Math.round((sec - Math.floor(sec)) * 100);
+  const totalCs = Math.max(0, Math.round(sec * 100));
+
+  const hours = Math.floor(totalCs / 360000);
+  const minutes = Math.floor((totalCs % 360000) / 6000);
+  const seconds = Math.floor((totalCs % 6000) / 100);
+  const centiseconds = totalCs % 100;
 
   const pad2 = (n: number) => n.toString().padStart(2, "0");
-  const pad2c = (n: number) => n.toString().padStart(2, "0");
 
-  return `${hours}:${pad2(minutes)}:${pad2(seconds)}.${pad2c(centiseconds)}`;
+  return `${hours}:${pad2(minutes)}:${pad2(seconds)}.${pad2(centiseconds)}`;
 }
 
 function synthesizeDraftWordsFromChunkText(chunk: CaptionDraftChunk): CaptionDraftWord[] {
@@ -128,7 +150,80 @@ function normalizeText(raw: string): string {
 }
 
 function safeAssText(raw: string): string {
-  return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/\s+/g, " ").trim();
+  return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeWordKey(value: string): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'-]+/gu, "")
+    .trim();
+}
+
+function isPremiumKeyword(word: string, customKeywords?: string[]): boolean {
+  const key = normalizeWordKey(word);
+  if (!key) return false;
+
+  if (customKeywords?.length) {
+    return customKeywords.map((item) => normalizeWordKey(item)).includes(key);
+  }
+
+  return PREMIUM_HIGHLIGHT_WORDS.has(key);
+}
+
+function getValidWordsFromChunk(chunk: CaptionDraftChunk): CaptionDraftWord[] {
+  const rawWords = Array.isArray(chunk.words) ? chunk.words : [];
+
+  const validWords = rawWords
+    .map((word) => ({
+      text: normalizeText(word.text || ""),
+      startSec: Number(word.startSec),
+      endSec: Number(word.endSec),
+    }))
+    .filter(
+      (word) =>
+        !!word.text &&
+        Number.isFinite(word.startSec) &&
+        Number.isFinite(word.endSec) &&
+        word.endSec > word.startSec,
+    )
+    .sort((a, b) => a.startSec - b.startSec);
+
+  if (validWords.length) {
+    return validWords;
+  }
+
+  return synthesizeDraftWordsFromChunkText(chunk);
+}
+
+function applyCaptionOffsetToDraft(draft: CaptionDraftClip, offsetSec: number): CaptionDraftClip {
+  if (!Number.isFinite(offsetSec) || offsetSec === 0) return draft;
+
+  const shift = (value: number) => Math.max(0, value + offsetSec);
+
+  return {
+    ...draft,
+    chunks: draft.chunks.map((chunk) => ({
+      ...chunk,
+      startSec: shift(chunk.startSec),
+      endSec: shift(chunk.endSec),
+      words: chunk.words?.map((word) => ({
+        ...word,
+        startSec: shift(word.startSec),
+        endSec: shift(word.endSec),
+      })),
+    })),
+  };
+}
+
+function assColorForWord(word: string, customKeywords?: string[]): string {
+  return isPremiumKeyword(word, customKeywords) ? PREMIUM_HIGHLIGHT_COLOR : PREMIUM_WHITE_COLOR;
+}
+
+function premiumWordTags(word: string, customKeywords?: string[]): string {
+  const color = assColorForWord(word, customKeywords);
+
+  return `{\\c${color}\\3c${PREMIUM_OUTLINE_COLOR}}`;
 }
 
 function buildAssHeader(style: CaptionStyle, fontName = DEFAULT_FONT): string {
@@ -523,23 +618,32 @@ function buildDraftChunksFromSegment(seg: WhisperSegment): CaptionDraftChunk[] {
     .filter((chunk): chunk is CaptionDraftChunk => !!chunk);
 }
 
-function buildKaraokeTextFromDraftChunk(chunk: CaptionDraftChunk): string {
-  const normalizedChunkText = normalizeText(chunk.text || "");
-  const normalizedWordsText = (chunk.words ?? []).map((w) => normalizeText(w.text)).join(" ");
-
-  const words =
-    chunk.words?.length && normalizedWordsText === normalizedChunkText
-      ? chunk.words
-      : synthesizeDraftWordsFromChunkText(chunk);
+function buildKaraokeTextFromDraftChunk(
+  chunk: CaptionDraftChunk,
+  _customKeywords?: string[],
+): string {
+  const words = getValidWordsFromChunk(chunk);
 
   let assText = "";
   let cursorMs = 0;
 
-  for (const w of words) {
+  for (let index = 0; index < words.length; index += 1) {
+    const w = words[index];
+    const nextWord = words[index + 1];
+
     const rawWord = safeAssText(w.text || "");
     if (!rawWord) continue;
 
-    const durSec = Math.max(0.03, w.endSec - w.startSec);
+    const safeWordStartSec = Math.max(chunk.startSec, w.startSec);
+    const safeWordEndSec = Math.max(safeWordStartSec + 0.04, w.endSec);
+
+    // Important:
+    // ASS karaoke is sequential.
+    // To preserve natural pauses WITHOUT invisible tokens,
+    // the current word "owns" the silence until the next word starts.
+    const timingEndSec = nextWord ? Math.max(safeWordEndSec, nextWord.startSec) : safeWordEndSec;
+
+    const durSec = Math.max(0.04, timingEndSec - safeWordStartSec);
     const durCs = Math.max(1, Math.round(durSec * 100));
     const durMs = durCs * 10;
 
@@ -565,41 +669,55 @@ function buildKaraokeTextFromDraftChunk(chunk: CaptionDraftChunk): string {
   return assText.trim();
 }
 
-function buildBottomCardKaraokeText(chunk: CaptionDraftChunk): string {
-  return `{\\an2\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_BOTTOM_TEXT_Y})}${lineFade()}${buildKaraokeTextFromDraftChunk(chunk)}`;
+function buildBottomCardKaraokeText(chunk: CaptionDraftChunk, customKeywords?: string[]): string {
+  return (
+    `{\\an2\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_BOTTOM_TEXT_Y})}` +
+    `{\\fad(30,70)}` +
+    `{\\fsp0}` +
+    buildKaraokeTextFromDraftChunk(chunk, customKeywords)
+  );
 }
 
 function buildCenterWordByWordEvents(
   chunk: CaptionDraftChunk,
   captionStyle: CaptionStyle,
+  customKeywords?: string[],
 ): Array<{ start: string; end: string; styleName: string; text: string }> {
-  const normalizedChunkText = normalizeText(chunk.text || "");
-  const normalizedWordsText = (chunk.words ?? []).map((w) => normalizeText(w.text)).join(" ");
-
-  const words =
-    chunk.words?.length && normalizedWordsText === normalizedChunkText
-      ? chunk.words
-      : synthesizeDraftWordsFromChunkText(chunk);
+  const words = getValidWordsFromChunk(chunk);
 
   return words
     .filter((w) => normalizeText(w.text))
-    .map((w) => {
+    .map((w, index) => {
       const rawWord = safeAssText(w.text);
-      const durMs = Math.max(80, Math.round((w.endSec - w.startSec) * 1000));
-      const popInEnd = Math.min(KARAOKE_POP_IN_MS, durMs);
-      const popOutStart = Math.max(durMs - KARAOKE_POP_OUT_MS, 0);
-      const popScale = clamp(KARAOKE_POP_SCALE, 105, 140);
+      const nextWord = words[index + 1];
+
+      const startSec = w.startSec;
+      const naturalEndSec = w.endSec;
+
+      // Tiny visual hold, but never push too much into next word.
+      const maxEndBeforeNext = nextWord
+        ? Math.max(startSec + 0.08, nextWord.startSec - 0.015)
+        : naturalEndSec + 0.04;
+      const endSec = Math.max(startSec + 0.08, Math.min(naturalEndSec + 0.045, maxEndBeforeNext));
+
+      const durMs = Math.max(90, Math.round((endSec - startSec) * 1000));
+      const popInEnd = Math.min(85, durMs);
+      const popOutStart = Math.max(durMs - 75, 0);
+      const popScale = clamp(KARAOKE_POP_SCALE, 108, 134);
+
+      const colorTag = premiumWordTags(rawWord, customKeywords);
 
       const text =
         `{\\an5\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_CENTER_Y})}` +
-        lineFade() +
+        `{\\fad(25,65)}` +
+        colorTag +
         `{\\t(0,${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
         `\\t(${popOutStart},${durMs},\\fscx100\\fscy100)}` +
         rawWord;
 
       return {
-        start: secondsToAssTime(w.startSec),
-        end: secondsToAssTime(w.endSec),
+        start: secondsToAssTime(startSec),
+        end: secondsToAssTime(endSec),
         styleName: "QuoteCenterWord",
         text,
       };
@@ -621,9 +739,10 @@ function applyInlineStyle(text: string, style: CaptionStyle) {
 function buildDefaultDialogueTextFromDraftChunk(
   chunk: CaptionDraftChunk,
   captionStyle: CaptionStyle,
+  customKeywords?: string[],
 ): string {
   if (captionStyle === "karaoke") {
-    return `${lineFade()}${buildKaraokeTextFromDraftChunk(chunk)}`;
+    return `${lineFade()}${buildKaraokeTextFromDraftChunk(chunk, customKeywords)}`;
   }
 
   return `${lineFade()}${applyInlineStyle(safeAssText(chunk.text), captionStyle)}`;
@@ -675,12 +794,13 @@ function draftClipToAss(
   captionStyle: CaptionStyle,
   fontName: string,
   quoteReelCaptionPreset?: QuoteReelCaptionPreset,
+  customKeywords?: string[],
 ): string {
   let ass = buildAssHeader(captionStyle, fontName);
 
   for (const chunk of draftClip.chunks) {
     if (quoteReelCaptionPreset === "card_center_word_by_word") {
-      const events = buildCenterWordByWordEvents(chunk, captionStyle);
+      const events = buildCenterWordByWordEvents(chunk, captionStyle, customKeywords);
 
       for (const event of events) {
         const dialogue = [
@@ -706,9 +826,10 @@ function draftClipToAss(
     const end = secondsToAssTime(chunk.endSec);
 
     const text =
-      quoteReelCaptionPreset === "card_bottom_karaoke"
-        ? buildBottomCardKaraokeText(chunk)
-        : buildDefaultDialogueTextFromDraftChunk(chunk, captionStyle);
+      quoteReelCaptionPreset === "card_bottom_karaoke" ||
+      quoteReelCaptionPreset === "card_bottom_premium_karaoke"
+        ? buildBottomCardKaraokeText(chunk, customKeywords)
+        : buildDefaultDialogueTextFromDraftChunk(chunk, captionStyle, customKeywords);
 
     const dialogue = ["Dialogue: 0", start, end, "Default", "", "0", "0", "0", "", text].join(",");
 
@@ -776,8 +897,12 @@ export async function generateSubtitlesFromDrafts(
   await ensureDir(SUBS_DIR);
 
   const captionStyle = options?.captionStyle ?? "karaoke";
-  const fontName = options?.fontName ?? DEFAULT_FONT;
+  const fontName = options?.fontName ?? PREMIUM_FONT;
   const quoteReelCaptionPreset = options?.quoteReelCaptionPreset;
+  const captionOffsetSec = Number.isFinite(options?.captionOffsetSec)
+    ? Number(options?.captionOffsetSec)
+    : DEFAULT_CAPTION_OFFSET_SEC;
+  const premiumKeywords = options?.premiumKeywords;
 
   const subtitleFiles: string[] = [];
 
@@ -786,12 +911,21 @@ export async function generateSubtitlesFromDrafts(
     const base = path.basename(clipPath, path.extname(clipPath));
     const assPath = path.join(SUBS_DIR, `${base}.ass`);
 
-    const draft = drafts.find((d) => d.clipIndex === i) ?? {
+    const rawDraft = drafts.find((d) => d.clipIndex === i) ?? {
       clipIndex: i,
       chunks: [],
     };
 
-    const ass = draftClipToAss(draft, captionStyle, fontName, quoteReelCaptionPreset);
+    const draft = applyCaptionOffsetToDraft(rawDraft, captionOffsetSec);
+
+    const ass = draftClipToAss(
+      draft,
+      captionStyle,
+      fontName,
+      quoteReelCaptionPreset,
+      premiumKeywords,
+    );
+
     await fsp.writeFile(assPath, ass, "utf8");
     subtitleFiles.push(assPath);
   }

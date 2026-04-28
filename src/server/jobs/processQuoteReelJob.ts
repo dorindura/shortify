@@ -32,7 +32,12 @@ import type {
 type SubtitleFile = string | { path: string };
 
 function isQuoteReelCaptionPreset(value: unknown): value is QuoteReelCaptionPreset {
-  return value === "card_bottom_karaoke" || value === "card_center_word_by_word";
+  return (
+    value === "card_bottom_karaoke" ||
+    value === "card_center_word_by_word" ||
+    value === "card_center_premium_word" ||
+    value === "card_bottom_premium_karaoke"
+  );
 }
 
 function subtitleToPath(s: SubtitleFile): string {
@@ -80,6 +85,12 @@ function isQuoteReelVoicePreset(value: unknown): value is QuoteReelVoicePreset {
     value === "motivational_male" ||
     value === "neutral"
   );
+}
+
+function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
+  const value = process.env.QUOTE_REEL_CAPTION_PRESET?.trim();
+
+  return isQuoteReelCaptionPreset(value) ? value : "card_bottom_karaoke";
 }
 
 export async function processQuoteReelJob(jobId: string) {
@@ -136,7 +147,7 @@ export async function processQuoteReelJob(jobId: string) {
       existingMeta.captionPreset,
     )
       ? existingMeta.captionPreset
-      : "card_bottom_karaoke";
+      : getDefaultQuoteReelCaptionPreset();
 
     const targetDurationSec = clamp(Number(existingMeta.targetDurationSec ?? 70), 45, 180);
     const minDurationSec = clamp(Number(existingMeta.minDurationSec ?? 60), 45, 180);
@@ -238,6 +249,7 @@ export async function processQuoteReelJob(jobId: string) {
         modelId: voiceover.modelId,
         audioPath: voiceover.audioPath,
         durationSec: voiceover.durationSec,
+        captionDraft: voiceover.captionDraft,
       };
 
       await dbUpdateJobQuoteMeta(jobId, {
@@ -317,15 +329,23 @@ export async function processQuoteReelJob(jobId: string) {
     if (captionsEnabled) {
       await dbUpdateJobStage(jobId, "captioning", 76);
 
-      captionDrafts = voiceoverAudioPath
-        ? await generateCaptionDraftsForAudioFiles([voiceoverAudioPath])
-        : await generateCaptionDraftsForClips([baseVideoPath]);
+      captionDrafts = voiceoverMetaPatch?.captionDraft
+        ? [voiceoverMetaPatch.captionDraft]
+        : voiceoverAudioPath
+          ? await generateCaptionDraftsForAudioFiles([voiceoverAudioPath])
+          : await generateCaptionDraftsForClips([baseVideoPath]);
 
       await dbSetJobCaptionDrafts(jobId, captionDrafts);
 
       const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, [baseVideoPath], {
         captionStyle,
         quoteReelCaptionPreset: captionPreset,
+        fontName: process.env.QUOTE_REEL_CAPTION_FONT?.trim() || "Inter",
+        captionOffsetSec: Number(process.env.QUOTE_REEL_CAPTION_OFFSET_SEC ?? 0),
+        premiumKeywords: (process.env.QUOTE_REEL_HIGHLIGHT_WORDS ?? "")
+          .split(",")
+          .map((word) => word.trim())
+          .filter(Boolean),
       });
 
       const subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);

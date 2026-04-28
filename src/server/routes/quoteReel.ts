@@ -25,11 +25,7 @@ const ALLOWED_TONES: QuoteReelTone[] = [
   "stoic",
 ];
 
-const ALLOWED_CAPTION_STYLES: CaptionStyle[] = [
-  "boldYellow",
-  "subtle",
-  "karaoke",
-];
+const ALLOWED_CAPTION_STYLES: CaptionStyle[] = ["boldYellow", "subtle", "karaoke"];
 
 const ALLOWED_VOICE_PRESETS: QuoteReelVoicePreset[] = [
   "dark_male",
@@ -42,6 +38,8 @@ const ALLOWED_VOICE_PRESETS: QuoteReelVoicePreset[] = [
 const ALLOWED_QUOTE_REEL_CAPTION_PRESETS: QuoteReelCaptionPreset[] = [
   "card_bottom_karaoke",
   "card_center_word_by_word",
+  "card_center_premium_word",
+  "card_bottom_premium_karaoke",
 ];
 
 function clamp(n: number, min: number, max: number) {
@@ -50,6 +48,14 @@ function clamp(n: number, min: number, max: number) {
 
 function normalizeTextInput(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
+  const value = process.env.QUOTE_REEL_CAPTION_PRESET?.trim();
+
+  return ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(value as QuoteReelCaptionPreset)
+    ? (value as QuoteReelCaptionPreset)
+    : "card_bottom_karaoke";
 }
 
 export async function registerQuoteReelRoute(app: FastifyInstance) {
@@ -90,39 +96,28 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
       ? (rawTone as QuoteReelTone)
       : "cinematic";
 
-    const captionsEnabled = typeof body.captionsEnabled === "boolean"
-      ? body.captionsEnabled
-      : true;
+    const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
 
-    const rawCaptionStyle = normalizeTextInput(body.captionStyle) as
-      | CaptionStyle
-      | "";
+    const rawCaptionStyle = normalizeTextInput(body.captionStyle) as CaptionStyle | "";
     const captionStyle: CaptionStyle = ALLOWED_CAPTION_STYLES.includes(
-        rawCaptionStyle as CaptionStyle,
-      )
+      rawCaptionStyle as CaptionStyle,
+    )
       ? (rawCaptionStyle as CaptionStyle)
       : "karaoke";
 
-    const rawCaptionPreset = normalizeTextInput(body.captionPreset) as
-      | QuoteReelCaptionPreset
-      | "";
-    const captionPreset: QuoteReelCaptionPreset =
-      ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(
-          rawCaptionPreset as QuoteReelCaptionPreset,
-        )
-        ? (rawCaptionPreset as QuoteReelCaptionPreset)
-        : "card_bottom_karaoke";
+    const rawCaptionPreset = normalizeTextInput(body.captionPreset) as QuoteReelCaptionPreset | "";
+    const captionPreset: QuoteReelCaptionPreset = ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(
+      rawCaptionPreset as QuoteReelCaptionPreset,
+    )
+      ? (rawCaptionPreset as QuoteReelCaptionPreset)
+      : getDefaultQuoteReelCaptionPreset();
 
-    const voiceEnabled = typeof body.voiceEnabled === "boolean"
-      ? body.voiceEnabled
-      : true;
+    const voiceEnabled = typeof body.voiceEnabled === "boolean" ? body.voiceEnabled : true;
 
-    const rawVoicePreset = normalizeTextInput(body.voicePreset) as
-      | QuoteReelVoicePreset
-      | "";
+    const rawVoicePreset = normalizeTextInput(body.voicePreset) as QuoteReelVoicePreset | "";
     const voicePreset: QuoteReelVoicePreset = ALLOWED_VOICE_PRESETS.includes(
-        rawVoicePreset as QuoteReelVoicePreset,
-      )
+      rawVoicePreset as QuoteReelVoicePreset,
+    )
       ? (rawVoicePreset as QuoteReelVoicePreset)
       : "storyteller";
 
@@ -148,11 +143,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
       });
     }
 
-    const estimatedDurationForLimits = Math.max(
-      targetDurationSec,
-      minDurationSec,
-      60,
-    );
+    const estimatedDurationForLimits = Math.max(targetDurationSec, minDurationSec, 60);
 
     const limit = await enforceJobLimits(user.id, {
       clipDurationSec: estimatedDurationForLimits,
@@ -170,9 +161,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
     }
 
     const now = new Date().toISOString();
-    const source = mode === "manual_text"
-      ? "quote_reel:text"
-      : `quote_reel:prompt:${rawPrompt}`;
+    const source = mode === "manual_text" ? "quote_reel:text" : `quote_reel:prompt:${rawPrompt}`;
 
     const job: Job = {
       id: randomUUID(),
