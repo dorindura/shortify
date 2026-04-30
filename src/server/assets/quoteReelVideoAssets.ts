@@ -209,7 +209,6 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
   ],
   ignoring: [
     "actions/ignoring",
-    "social_situations/being_ignored",
     "social_situations/being_judged",
   ],
   included: [
@@ -244,7 +243,6 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
   ],
   loneliness: [
     "emotions/loneliness",
-    "social_situations/loneliness_in_crowd",
     "characters/alone",
   ],
   love: [
@@ -351,7 +349,6 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
     "symbolic/sunset",
   ],
   slow_motion: [
-    "energy/slow_motion",
     "symbolic/silhouettes",
     "characters/walking",
   ],
