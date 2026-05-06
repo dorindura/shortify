@@ -72,6 +72,13 @@ type SubtitleGenerationOptions = {
 const DEFAULT_FONT = "Inter";
 
 const CHUNK_SIZE = 4;
+const CAPTION_CHUNK_BREAK_GAP_SEC = Number(
+  process.env.QUOTE_REEL_CAPTION_CHUNK_BREAK_GAP_SEC ?? 0.24,
+);
+
+const CAPTION_MAX_CHUNK_DURATION_SEC = Number(
+  process.env.QUOTE_REEL_CAPTION_MAX_CHUNK_DURATION_SEC ?? 1.15,
+);
 const LINE_FADE_IN_MS = 40;
 const LINE_FADE_OUT_MS = 80;
 const KARAOKE_POP_SCALE = 118;
@@ -579,9 +586,41 @@ function synthesizeWordsFromSegment(seg: WhisperSegment): WhisperWord[] {
 function chunkWords(words: WhisperWord[], chunkSize = CHUNK_SIZE): WhisperWord[][] {
   const chunks: WhisperWord[][] = [];
 
-  for (let i = 0; i < words.length; i += chunkSize) {
-    const group = words.slice(i, i + chunkSize);
-    if (group.length) chunks.push(group);
+  const maxWords = Math.max(1, Math.min(6, chunkSize));
+
+  const breakGapSec = Number.isFinite(CAPTION_CHUNK_BREAK_GAP_SEC)
+    ? Math.max(0.08, CAPTION_CHUNK_BREAK_GAP_SEC)
+    : 0.24;
+
+  const maxChunkDurationSec = Number.isFinite(CAPTION_MAX_CHUNK_DURATION_SEC)
+    ? Math.max(0.45, CAPTION_MAX_CHUNK_DURATION_SEC)
+    : 1.15;
+
+  let current: WhisperWord[] = [];
+
+  for (const word of words) {
+    const previous = current[current.length - 1];
+    const first = current[0];
+
+    const gapFromPrevious = previous ? word.start - previous.end : 0;
+    const nextChunkDuration = first ? word.end - first.start : 0;
+
+    const shouldStartNewChunk =
+      current.length > 0 &&
+      (current.length >= maxWords ||
+        gapFromPrevious >= breakGapSec ||
+        nextChunkDuration >= maxChunkDurationSec);
+
+    if (shouldStartNewChunk) {
+      chunks.push(current);
+      current = [];
+    }
+
+    current.push(word);
+  }
+
+  if (current.length) {
+    chunks.push(current);
   }
 
   return chunks;
@@ -694,7 +733,6 @@ function buildCenterWordByWordEvents(
       const startSec = w.startSec;
       const naturalEndSec = w.endSec;
 
-      // Tiny visual hold, but never push too much into next word.
       const maxEndBeforeNext = nextWord
         ? Math.max(startSec + 0.08, nextWord.startSec - 0.015)
         : naturalEndSec + 0.04;
@@ -722,6 +760,71 @@ function buildCenterWordByWordEvents(
         text,
       };
     });
+}
+
+function buildProgressiveWordsLineText(
+  words: CaptionDraftWord[],
+  currentIndex: number,
+  customKeywords?: string[],
+): string {
+  const visibleWords = words.slice(0, currentIndex + 1);
+
+  return visibleWords
+    .map((word, index) => {
+      const rawWord = safeAssText(word.text);
+      if (!rawWord) return "";
+
+      const isCurrentWord = index === currentIndex;
+      const colorTag = premiumWordTags(rawWord, customKeywords);
+
+      if (!isCurrentWord) {
+        return `${colorTag}${rawWord}`;
+      }
+
+      return colorTag + `{\\fscx112\\fscy112}` + rawWord + `{\\fscx100\\fscy100}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildCenterProgressiveWordsEvents(
+  chunk: CaptionDraftChunk,
+  _captionStyle: CaptionStyle,
+  customKeywords?: string[],
+): Array<{ start: string; end: string; styleName: string; text: string }> {
+  const words = getValidWordsFromChunk(chunk).filter((w) => normalizeText(w.text));
+
+  if (!words.length) return [];
+
+  return words.map((word, index) => {
+    const nextWord = words[index + 1];
+
+    const startSec = Math.max(chunk.startSec, word.startSec);
+
+    const endSec = nextWord
+      ? Math.max(startSec + 0.08, nextWord.startSec - 0.012)
+      : Math.max(startSec + 0.12, word.endSec + 0.12);
+
+    const durMs = Math.max(100, Math.round((endSec - startSec) * 1000));
+    const popInEnd = Math.min(90, durMs);
+    const popScale = 108;
+
+    const lineText = buildProgressiveWordsLineText(words, index, customKeywords);
+
+    const text =
+      `{\\an5\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_CENTER_Y})}` +
+      `{\\fad(20,55)}` +
+      `{\\t(0,${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
+      `\\t(${popInEnd},${durMs},\\fscx100\\fscy100)}` +
+      lineText;
+
+    return {
+      start: secondsToAssTime(startSec),
+      end: secondsToAssTime(endSec),
+      styleName: "QuoteCenterWord",
+      text,
+    };
+  });
 }
 
 function applyInlineStyle(text: string, style: CaptionStyle) {
@@ -799,8 +902,15 @@ function draftClipToAss(
   let ass = buildAssHeader(captionStyle, fontName);
 
   for (const chunk of draftClip.chunks) {
-    if (quoteReelCaptionPreset === "card_center_word_by_word") {
-      const events = buildCenterWordByWordEvents(chunk, captionStyle, customKeywords);
+    if (
+      quoteReelCaptionPreset === "card_center_word_by_word" ||
+      quoteReelCaptionPreset === "card_center_progressive_words" ||
+      quoteReelCaptionPreset === "card_center_premium_word"
+    ) {
+      const events =
+        quoteReelCaptionPreset === "card_center_progressive_words"
+          ? buildCenterProgressiveWordsEvents(chunk, captionStyle, customKeywords)
+          : buildCenterWordByWordEvents(chunk, captionStyle, customKeywords);
 
       for (const event of events) {
         const dialogue = [

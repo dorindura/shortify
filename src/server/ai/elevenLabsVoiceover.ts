@@ -8,6 +8,17 @@ import type { CaptionDraftClip, QuoteReelTone } from "@lib/jobsStore";
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 const TTS_DIR = path.join(process.cwd(), "tmp", "tts");
 
+const CAPTION_MAX_WORDS_PER_CHUNK = Number(
+  process.env.QUOTE_REEL_CAPTION_MAX_WORDS_PER_CHUNK ?? 4,
+);
+
+const CAPTION_CHUNK_BREAK_GAP_SEC = Number(
+  process.env.QUOTE_REEL_CAPTION_CHUNK_BREAK_GAP_SEC ?? 0.24,
+);
+
+const CAPTION_MAX_CHUNK_DURATION_SEC = Number(
+  process.env.QUOTE_REEL_CAPTION_MAX_CHUNK_DURATION_SEC ?? 1.15,
+);
 export type QuoteReelVoicePreset =
   | "dark_male"
   | "storyteller"
@@ -339,6 +350,51 @@ function buildWordTimingsFromAlignment(
   return words;
 }
 
+function groupWordsIntoCaptionChunks(words: WordTiming[]): WordTiming[][] {
+  const maxWords = Number.isFinite(CAPTION_MAX_WORDS_PER_CHUNK)
+    ? Math.max(1, Math.min(6, CAPTION_MAX_WORDS_PER_CHUNK))
+    : 4;
+
+  const breakGapSec = Number.isFinite(CAPTION_CHUNK_BREAK_GAP_SEC)
+    ? Math.max(0.08, CAPTION_CHUNK_BREAK_GAP_SEC)
+    : 0.24;
+
+  const maxChunkDurationSec = Number.isFinite(CAPTION_MAX_CHUNK_DURATION_SEC)
+    ? Math.max(0.45, CAPTION_MAX_CHUNK_DURATION_SEC)
+    : 1.15;
+
+  const groups: WordTiming[][] = [];
+  let current: WordTiming[] = [];
+
+  for (const word of words) {
+    const previous = current[current.length - 1];
+    const first = current[0];
+
+    const gapFromPrevious = previous ? word.startSec - previous.endSec : 0;
+    const nextChunkDuration = first ? word.endSec - first.startSec : 0;
+
+    const shouldStartNewGroup = current.length > 0 &&
+      (
+        current.length >= maxWords ||
+        gapFromPrevious >= breakGapSec ||
+        nextChunkDuration >= maxChunkDurationSec
+      );
+
+    if (shouldStartNewGroup) {
+      groups.push(current);
+      current = [];
+    }
+
+    current.push(word);
+  }
+
+  if (current.length) {
+    groups.push(current);
+  }
+
+  return groups;
+}
+
 function buildCaptionDraftFromWordTimings(
   words: WordTiming[],
 ): CaptionDraftClip | undefined {
@@ -359,21 +415,19 @@ function buildCaptionDraftFromWordTimings(
 
   if (!cleanWords.length) return undefined;
 
-  const chunks: CaptionDraftClip["chunks"] = [];
-  const chunkSize = 4;
+  const groupedWords = groupWordsIntoCaptionChunks(cleanWords);
 
-  for (let i = 0; i < cleanWords.length; i += chunkSize) {
-    const group = cleanWords.slice(i, i + chunkSize);
-    if (!group.length) continue;
-
-    chunks.push({
+  const chunks: CaptionDraftClip["chunks"] = groupedWords
+    .filter((group) => group.length > 0)
+    .map((group) => ({
       id: randomUUID(),
       startSec: group[0].startSec,
       endSec: group[group.length - 1].endSec,
       text: group.map((word) => word.text).join(" "),
       words: group,
-    });
-  }
+    }));
+
+  if (!chunks.length) return undefined;
 
   return {
     clipIndex: 0,

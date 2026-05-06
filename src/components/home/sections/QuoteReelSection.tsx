@@ -240,7 +240,7 @@ export default function QuoteReelSection({
           </button>
         </div>
 
-        <div className={`mt-3 grid gap-2 md:grid-cols-2 ${!captionsEnabled ? "opacity-50" : ""}`}>
+        <div className={`mt-3 grid gap-2 md:grid-cols-3 ${!captionsEnabled ? "opacity-50" : ""}`}>
           <button
             type="button"
             disabled={!captionsEnabled}
@@ -270,6 +270,22 @@ export default function QuoteReelSection({
             <div className="font-semibold">Center word-by-word</div>
             <div className="mt-1 text-[11px] text-slate-400">
               One word at a time in the center of the video card.
+            </div>
+          </button>
+
+          <button
+            type="button"
+            disabled={!captionsEnabled}
+            onClick={() => setQuoteCaptionPreset("card_center_progressive_words")}
+            className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+              quoteCaptionPreset === "card_center_progressive_words"
+                ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+            }`}
+          >
+            <div className="font-semibold">Center progressive words</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Words displayed progressively in the center of the video card.
             </div>
           </button>
         </div>

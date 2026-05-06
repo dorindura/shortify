@@ -35,6 +35,7 @@ function isQuoteReelCaptionPreset(value: unknown): value is QuoteReelCaptionPres
   return (
     value === "card_bottom_karaoke" ||
     value === "card_center_word_by_word" ||
+    value === "card_center_progressive_words" ||
     value === "card_center_premium_word" ||
     value === "card_bottom_premium_karaoke"
   );
