@@ -51,6 +51,49 @@ function toLocalAssetPaths(paths: string[]): string[] {
   return paths.map(toLocalAssetPath);
 }
 
+function normalizeCaptionDraftsForRender(drafts: CaptionDraftClip[]): CaptionDraftClip[] {
+  return drafts.map((clip) => ({
+    ...clip,
+    chunks: clip.chunks.map((chunk) => {
+      const text = String(chunk.text ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const startSec = Number(chunk.startSec);
+      const endSec = Number(chunk.endSec);
+
+      if (!text || !Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
+        return chunk;
+      }
+
+      const words = text
+        .split(/\s+/)
+        .map((word) => word.trim())
+        .filter(Boolean);
+
+      if (!words.length) {
+        return {
+          ...chunk,
+          text,
+          words: undefined,
+        };
+      }
+
+      const duration = endSec - startSec;
+      const wordDuration = duration / words.length;
+
+      return {
+        ...chunk,
+        text,
+        words: words.map((word, index) => ({
+          text: word,
+          startSec: startSec + wordDuration * index,
+          endSec: index === words.length - 1 ? endSec : startSec + wordDuration * (index + 1),
+        })),
+      };
+    }),
+  }));
+}
+
 export async function registerJobRenderRoute(app: FastifyInstance) {
   app.post("/api/jobs/:jobId/render", async (req, reply) => {
     const user = await requireUser(req, reply);
@@ -87,9 +130,11 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
       return reply.code(400).send({ error: "This job has no prepared clips" });
     }
 
-    const captionDrafts: CaptionDraftClip[] = Array.isArray(job.caption_drafts)
+    const rawCaptionDrafts: CaptionDraftClip[] = Array.isArray(job.caption_drafts)
       ? job.caption_drafts
       : [];
+
+    const captionDrafts = normalizeCaptionDraftsForRender(rawCaptionDrafts);
 
     if (!captionDrafts.length) {
       return reply.code(400).send({

@@ -179,6 +179,8 @@ function isPremiumKeyword(word: string, customKeywords?: string[]): boolean {
 }
 
 function getValidWordsFromChunk(chunk: CaptionDraftChunk): CaptionDraftWord[] {
+  const chunkText = normalizeText(chunk.text || "");
+
   const rawWords = Array.isArray(chunk.words) ? chunk.words : [];
 
   const validWords = rawWords
@@ -196,11 +198,16 @@ function getValidWordsFromChunk(chunk: CaptionDraftChunk): CaptionDraftWord[] {
     )
     .sort((a, b) => a.startSec - b.startSec);
 
-  if (validWords.length) {
+  const wordsText = normalizeText(validWords.map((word) => word.text).join(" "));
+
+  if (validWords.length && wordsText === chunkText) {
     return validWords;
   }
 
-  return synthesizeDraftWordsFromChunkText(chunk);
+  return synthesizeDraftWordsFromChunkText({
+    ...chunk,
+    text: chunkText,
+  });
 }
 
 function applyCaptionOffsetToDraft(draft: CaptionDraftClip, offsetSec: number): CaptionDraftClip {
