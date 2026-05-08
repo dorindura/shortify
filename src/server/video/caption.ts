@@ -414,7 +414,7 @@ function buildDefaultStyleLine(style: CaptionStyle, fontName: string): string {
         2,
         base.MarginL,
         base.MarginR,
-        130,
+        380,
         base.Encoding,
       ].join(",")
     );
@@ -445,7 +445,7 @@ function buildDefaultStyleLine(style: CaptionStyle, fontName: string): string {
         2,
         base.MarginL,
         base.MarginR,
-        120,
+        380,
         base.Encoding,
       ].join(",")
     );
@@ -475,7 +475,7 @@ function buildDefaultStyleLine(style: CaptionStyle, fontName: string): string {
       2,
       80,
       80,
-      120,
+      380,
       1,
     ].join(",")
   );

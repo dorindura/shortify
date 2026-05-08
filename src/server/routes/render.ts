@@ -132,6 +132,7 @@ export async function registerJobRenderRoute(app: FastifyInstance) {
       // --- GENERATE SUBTITLES FROM EDITED DRAFTS ---
       const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, clips, {
         captionStyle: style,
+        fontName: "Inter",
       });
 
       subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);
