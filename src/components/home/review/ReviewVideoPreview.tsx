@@ -70,7 +70,8 @@ type Props = {
   aspect?: "horizontal" | "vertical" | "verticalLetterbox";
   smartCrops?: (SmartCropBox | null)[];
   onTimeChange?: (time: number) => void;
-  seekTo?: number | null;
+  onDurationChange?: (duration: number) => void;
+  seekTo?: { time: number; play?: boolean } | number | null;
   onSeekHandled?: () => void;
 };
 
@@ -130,6 +131,7 @@ export default function ReviewVideoPreview({
   blackAndWhite,
   ending,
   onTimeChange,
+  onDurationChange,
   seekTo,
   onSeekHandled,
 }: Props) {
@@ -168,14 +170,22 @@ export default function ReviewVideoPreview({
     if (!videoRef.current) return;
 
     const video = videoRef.current;
-    video.currentTime = seekTo;
-    setCurrentTime(seekTo);
-    setIsEndingPreviewActive(false);
-    onTimeChange?.(seekTo);
 
-    video.play().catch(() => {
-      // ignore autoplay restrictions
-    });
+    const targetTime = typeof seekTo === "number" ? seekTo : seekTo.time;
+    const shouldPlay = typeof seekTo === "number" ? true : (seekTo.play ?? true);
+
+    video.currentTime = targetTime;
+    setCurrentTime(targetTime);
+    setIsEndingPreviewActive(false);
+    onTimeChange?.(targetTime);
+
+    if (shouldPlay) {
+      video.play().catch(() => {
+        // ignore autoplay restrictions
+      });
+    } else {
+      video.pause();
+    }
 
     onSeekHandled?.();
   }, [seekTo, onSeekHandled, onTimeChange]);
@@ -217,7 +227,7 @@ export default function ReviewVideoPreview({
   const shouldHideRegularOverlay = isEndingPreviewActive || isTimedEndingVisible;
 
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
+    <div className="flex h-full min-h-0 flex-col rounded-2xl bg-slate-950/80">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-100">Live preview</div>
@@ -231,15 +241,17 @@ export default function ReviewVideoPreview({
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-black">
-        <div className="relative mx-auto aspect-[9/16] w-full max-w-[420px] bg-black">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border border-slate-800 bg-black shadow-2xl shadow-black/40">
+        <div className="relative mx-auto aspect-[9/16] h-full max-h-full min-h-[360px] w-auto max-w-full bg-black xl:min-h-[480px]">
           {clipUrl ? (
             <video
               ref={videoRef}
               src={clipUrl}
               controls
               onLoadedMetadata={(e) => {
-                setVideoDuration(e.currentTarget.duration || 0);
+                const duration = e.currentTarget.duration || 0;
+                setVideoDuration(duration);
+                onDurationChange?.(duration);
               }}
               className="h-full w-full bg-black object-contain"
               style={{
@@ -427,7 +439,7 @@ export default function ReviewVideoPreview({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+      <div className="mt-3 flex shrink-0 items-center justify-between text-[10px] text-slate-500">
         <span>Current time: {currentTime.toFixed(2)}s</span>
         <span>
           {activeChunk ? `Active chunk: ${activeChunk.id.slice(0, 6)}…` : "No active chunk"}
