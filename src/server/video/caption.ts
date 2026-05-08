@@ -112,6 +112,101 @@ const PREMIUM_HIGHLIGHT_COLOR = "&H0000D7FF&";
 const PREMIUM_WHITE_COLOR = "&H00FFFFFF&";
 const PREMIUM_OUTLINE_COLOR = "&HEE000000&";
 
+type ElevenLabsScribeWord = {
+  text?: string;
+  start?: number;
+  end?: number;
+  type?: string;
+};
+
+type ElevenLabsScribeResponse = {
+  text?: string;
+  words?: ElevenLabsScribeWord[];
+};
+
+async function transcribeAudioPathToDraftWithElevenLabs(
+  audioPath: string,
+  clipIndex: number,
+): Promise<CaptionDraftClip> {
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error("Missing ELEVENLABS_API_KEY");
+  }
+
+  const audioBuffer = await fsp.readFile(audioPath);
+
+  const form = new FormData();
+
+  form.append("model_id", process.env.ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v2");
+  const ext = path.extname(audioPath).toLowerCase();
+
+  const mimeType =
+    ext === ".wav"
+      ? "audio/wav"
+      : ext === ".m4a"
+        ? "audio/mp4"
+        : ext === ".aac"
+          ? "audio/aac"
+          : "audio/mpeg";
+
+  form.append("file", new Blob([audioBuffer], { type: mimeType }), path.basename(audioPath));
+
+  form.append("timestamps_granularity", "word");
+  form.append("tag_audio_events", "false");
+  form.append("diarize", "false");
+
+  const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(
+      `ElevenLabs STT failed: ${response.status} ${response.statusText}${
+        details ? ` - ${details}` : ""
+      }`,
+    );
+  }
+
+  const data = (await response.json()) as ElevenLabsScribeResponse;
+
+  const words: WhisperWord[] = (data.words ?? [])
+    .filter((word) => !word.type || word.type === "word")
+    .map((word) => ({
+      word: normalizeText(word.text ?? ""),
+      start: Number(word.start),
+      end: Number(word.end),
+    }))
+    .filter(
+      (word) =>
+        word.word &&
+        Number.isFinite(word.start) &&
+        Number.isFinite(word.end) &&
+        word.end > word.start,
+    );
+
+  if (!words.length) {
+    return {
+      clipIndex,
+      chunks: [],
+    };
+  }
+
+  const chunks = chunkWords(words)
+    .map(wordsToDraftChunk)
+    .filter((chunk): chunk is CaptionDraftChunk => !!chunk);
+
+  return {
+    clipIndex,
+    chunks,
+  };
+}
+
 function secondsToAssTime(sec: number): string {
   const totalCs = Math.max(0, Math.round(sec * 100));
 
@@ -896,7 +991,23 @@ async function transcribeClipToDraft(
   clipIndex: number,
 ): Promise<CaptionDraftClip> {
   const audioPath = await extractTinyAudioForWhisper(clipPath);
-  return transcribeAudioPathToDraft(audioPath, clipIndex, true);
+
+  try {
+    if (process.env.ELEVENLABS_API_KEY?.trim()) {
+      try {
+        return await transcribeAudioPathToDraftWithElevenLabs(audioPath, clipIndex);
+      } catch (err) {
+        console.warn(
+          "[transcribeClipToDraft] ElevenLabs STT failed, falling back to Whisper:",
+          err,
+        );
+      }
+    }
+
+    return await transcribeAudioPathToDraft(audioPath, clipIndex, false);
+  } finally {
+    await fsp.unlink(audioPath).catch(() => {});
+  }
 }
 
 function draftClipToAss(

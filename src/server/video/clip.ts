@@ -60,6 +60,62 @@ async function probeDuration(videoPath: string): Promise<number> {
   return secs;
 }
 
+function buildAccurateClipArgs(
+  inputPath: string,
+  startSec: number,
+  durationSec: number,
+  outPath: string,
+) {
+  const safeStart = Math.max(0, Number.isFinite(startSec) ? startSec : 0);
+  const safeDuration = Math.max(
+    0.6,
+    Number.isFinite(durationSec) ? durationSec : 0.6,
+  );
+  const safeEnd = safeStart + safeDuration;
+
+  const filterComplex = [
+    `[0:v:0]trim=start=${safeStart.toFixed(3)}:end=${
+      safeEnd.toFixed(3)
+    },setpts=PTS-STARTPTS,fps=30,format=yuv420p[v]`,
+    `[0:a:0]atrim=start=${safeStart.toFixed(3)}:end=${
+      safeEnd.toFixed(3)
+    },asetpts=PTS-STARTPTS,aresample=48000,apad[a]`,
+  ].join(";");
+
+  return [
+    "-y",
+    "-i",
+    inputPath,
+    "-filter_complex",
+    filterComplex,
+    "-map",
+    "[v]",
+    "-map",
+    "[a]",
+    "-t",
+    safeDuration.toFixed(3),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    "-movflags",
+    "+faststart",
+    outPath,
+  ];
+}
+
 type LoudSegment = {
   start: number;
   end: number;
@@ -238,22 +294,7 @@ export async function createClipsFromVideoUsingRanges(
     const id = randomUUID();
     const outPath = path.join(CLIPS_DIR, `${id}.mp4`);
 
-    const args = [
-      "-y",
-      "-ss",
-      String(start),
-      "-i",
-      videoPath,
-      "-t",
-      String(duration),
-      "-c",
-      "copy",
-      "-avoid_negative_ts",
-      "make_zero",
-      "-movflags",
-      "+faststart",
-      outPath,
-    ];
+    const args = buildAccurateClipArgs(videoPath, start, duration, outPath);
 
     await runCmd("ffmpeg", args, "createClipRanges");
     outputs.push(outPath);
@@ -293,18 +334,12 @@ export async function createClipsFromVideo(
       const id = randomUUID();
       const outPath = path.join(CLIPS_DIR, `${id}.mp4`);
 
-      const args = [
-        "-y",
-        "-ss",
-        String(win.start),
-        "-i",
+      const args = buildAccurateClipArgs(
         videoPath,
-        "-t",
-        String(clipDurationSec),
-        "-c",
-        "copy",
+        win.start,
+        clipDurationSec,
         outPath,
-      ];
+      );
 
       await runCmd("ffmpeg", args, "createClipSmart");
       outputs.push(outPath);
@@ -336,18 +371,12 @@ async function createNaiveClips(
     const id = randomUUID();
     const outPath = path.join(CLIPS_DIR, `${id}.mp4`);
 
-    const args = [
-      "-y",
-      "-ss",
-      String(startTime),
-      "-i",
+    const args = buildAccurateClipArgs(
       videoPath,
-      "-t",
-      String(clipDurationSec),
-      "-c",
-      "copy",
+      startTime,
+      clipDurationSec,
       outPath,
-    ];
+    );
 
     await runCmd("ffmpeg", args, "createClipNaive");
     outputs.push(outPath);
