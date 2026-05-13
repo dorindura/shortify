@@ -57,7 +57,9 @@ export async function registerUploadRoute(app: FastifyInstance) {
     const captionStyle: CaptionStyle =
       captionStyleField === "boldYellow" ||
       captionStyleField === "subtle" ||
-      captionStyleField === "karaoke"
+      captionStyleField === "karaoke" ||
+      captionStyleField === "wordByWord" ||
+      captionStyleField === "progressiveWords"
         ? captionStyleField
         : "karaoke";
 

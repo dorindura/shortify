@@ -3,7 +3,7 @@ export type JobStatus = "pending" | "processing" | "done" | "failed";
 export type ShortsSelectionMode = "auto" | "custom";
 export type JobType = "upload" | "url" | "quote_reel" | "multi_source_edit";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
-export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+export type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
 
 export type JobStage =
   | "queued"

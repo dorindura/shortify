@@ -6,7 +6,7 @@ import ReviewVideoPreview from "./ReviewVideoPreview";
 import CaptionTimelineEditor from "./CaptionTimelineEditor";
 import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
-type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
 type TextOverlayPosition = "top" | "center" | "bottom";
 
 type CaptionDraftWord = {
@@ -61,6 +61,10 @@ const DEFAULT_ENDING: EndingConfig = {
   position: "bottom",
 };
 
+function normalizeCaptionStyle(style?: CaptionStyle): CaptionStyle {
+  return !style || style === "subtle" ? "karaoke" : style;
+}
+
 type ReviewJob = {
   id: string;
   clips?: string[];
@@ -92,7 +96,9 @@ export default function JobReviewPanel({
 }: Props) {
   const [drafts, setDrafts] = useState<CaptionDraftClip[]>(job.captionDrafts ?? []);
   const [overlays, setOverlays] = useState<TextOverlay[]>(job.textOverlays ?? []);
-  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(job.captionStyle ?? "karaoke");
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(
+    normalizeCaptionStyle(job.captionStyle),
+  );
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(job.captionsEnabled ?? true);
   const [blackAndWhite, setBlackAndWhite] = useState<boolean>(job.blackAndWhite ?? false);
   const [ending, setEnding] = useState<EndingConfig>(job.ending ?? DEFAULT_ENDING);
@@ -113,7 +119,7 @@ export default function JobReviewPanel({
   useEffect(() => {
     setDrafts(job.captionDrafts ?? []);
     setOverlays(job.textOverlays ?? []);
-    setCaptionStyle(job.captionStyle ?? "karaoke");
+    setCaptionStyle(normalizeCaptionStyle(job.captionStyle));
     setCaptionsEnabled(job.captionsEnabled ?? true);
     setBlackAndWhite(job.blackAndWhite ?? false);
     setEnding(job.ending ?? DEFAULT_ENDING);
@@ -281,6 +287,7 @@ export default function JobReviewPanel({
                 drafts={drafts}
                 overlays={overlays}
                 captionsEnabled={captionsEnabled}
+                captionStyle={captionStyle}
                 blackAndWhite={blackAndWhite}
                 ending={ending}
                 seekTo={seekTo}
@@ -358,30 +365,47 @@ export default function JobReviewPanel({
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                        {(["karaoke", "boldYellow", "subtle"] as CaptionStyle[]).map((style) => (
+                        {(
+                          [
+                            {
+                              id: "karaoke",
+                              title: "Premium karaoke",
+                              description: "Best for TikTok/Reels with word sync.",
+                            },
+                            {
+                              id: "boldYellow",
+                              title: "Bold yellow",
+                              description: "High contrast classic shorts style.",
+                            },
+                            {
+                              id: "wordByWord",
+                              title: "Word by Word",
+                              description: "One timed word at a time in the lower caption zone.",
+                            },
+                            {
+                              id: "progressiveWords",
+                              title: "Progressive Words",
+                              description: "Words build up progressively with emphasis.",
+                            },
+                          ] satisfies Array<{
+                            id: CaptionStyle;
+                            title: string;
+                            description: string;
+                          }>
+                        ).map((style) => (
                           <button
-                            key={style}
+                            key={style.id}
                             type="button"
-                            onClick={() => setCaptionStyle(style)}
+                            onClick={() => setCaptionStyle(style.id)}
                             className={`rounded-2xl border p-4 text-left transition ${
-                              captionStyle === style
+                              captionStyle === style.id
                                 ? "border-cyan-400 bg-cyan-400/10 text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.12)]"
                                 : "border-slate-800 bg-slate-950/80 text-slate-300 hover:border-cyan-400/60"
                             }`}
                           >
-                            <div className="text-sm font-semibold">
-                              {style === "karaoke"
-                                ? "Premium karaoke"
-                                : style === "boldYellow"
-                                  ? "Bold yellow"
-                                  : "Subtle clean"}
-                            </div>
+                            <div className="text-sm font-semibold">{style.title}</div>
                             <div className="mt-1 text-[11px] text-slate-500">
-                              {style === "karaoke"
-                                ? "Best for TikTok/Reels with word sync."
-                                : style === "boldYellow"
-                                  ? "High contrast classic shorts style."
-                                  : "Minimal creator-style captions."}
+                              {style.description}
                             </div>
                           </button>
                         ))}

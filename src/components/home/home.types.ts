@@ -1,5 +1,10 @@
 export type LocalJobAspect = "horizontal" | "vertical" | "verticalLetterbox";
-export type LocalCaptionStyle = "boldYellow" | "subtle" | "karaoke";
+export type LocalCaptionStyle =
+  | "boldYellow"
+  | "subtle"
+  | "karaoke"
+  | "wordByWord"
+  | "progressiveWords";
 export type LocalJobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_edit";
 export type LocalQuoteTone = "aggressive" | "cinematic" | "calm" | "dark" | "emotional" | "stoic";
 

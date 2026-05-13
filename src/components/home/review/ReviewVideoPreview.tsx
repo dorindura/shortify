@@ -22,6 +22,8 @@ type CaptionDraftClip = {
   chunks: CaptionDraftChunk[];
 };
 
+type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
+
 type TextOverlayPosition = "top" | "center" | "bottom";
 
 type OverlayEmojiPlacement = "left" | "right";
@@ -65,6 +67,7 @@ type Props = {
   drafts: CaptionDraftClip[];
   overlays: TextOverlay[];
   captionsEnabled: boolean;
+  captionStyle?: CaptionStyle;
   blackAndWhite?: boolean;
   ending?: EndingConfig;
   aspect?: "horizontal" | "vertical" | "verticalLetterbox";
@@ -122,12 +125,27 @@ function buildEndingPreviewParts(ending?: EndingConfig) {
   }
 }
 
+function getValidCaptionWords(chunk: CaptionDraftChunk | null): CaptionDraftWord[] {
+  if (!chunk) return [];
+
+  return (chunk.words ?? [])
+    .filter(
+      (word) =>
+        word.text.trim() &&
+        Number.isFinite(word.startSec) &&
+        Number.isFinite(word.endSec) &&
+        word.endSec > word.startSec,
+    )
+    .sort((a, b) => a.startSec - b.startSec);
+}
+
 export default function ReviewVideoPreview({
   clipUrl,
   clipIndex,
   drafts,
   overlays,
   captionsEnabled,
+  captionStyle = "karaoke",
   blackAndWhite,
   ending,
   onTimeChange,
@@ -155,6 +173,29 @@ export default function ReviewVideoPreview({
       ) ?? null
     );
   }, [currentClipDraft, currentTime]);
+
+  const activeCaptionText = useMemo(() => {
+    if (!activeChunk) return "";
+
+    const words = getValidCaptionWords(activeChunk);
+
+    if (captionStyle === "wordByWord") {
+      return (
+        words.find(
+          (word) => currentTime >= word.startSec - 0.04 && currentTime <= word.endSec + 0.08,
+        )?.text ?? ""
+      );
+    }
+
+    if (captionStyle === "progressiveWords") {
+      const visibleWords = words.filter((word) => currentTime >= word.startSec - 0.04);
+      return visibleWords.length ? visibleWords.map((word) => word.text).join(" ") : "";
+    }
+
+    return activeChunk.text;
+  }, [activeChunk, captionStyle, currentTime]);
+
+  const activeCaptionWords = useMemo(() => getValidCaptionWords(activeChunk), [activeChunk]);
 
   const activeOverlays = useMemo(() => {
     return overlays.filter(
@@ -306,11 +347,32 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {captionsEnabled && activeChunk?.text && !shouldHideRegularOverlay && (
-            <div className="pointer-events-none absolute inset-x-4 bottom-16 flex justify-center">
-              {/*<div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
-              {activeChunk.text}
-              {/*</div>*/}
+          {captionsEnabled && activeCaptionText && !shouldHideRegularOverlay && (
+            <div className="pointer-events-none absolute inset-x-4 bottom-[19.8%] z-10 flex justify-center">
+              <div className="max-w-[86%] text-center text-[clamp(14px,1.6vh,18px)] leading-[1.12] font-normal tracking-normal text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.82)] [-webkit-text-stroke:0]">
+                {captionStyle === "karaoke" && activeCaptionWords.length > 0 ? (
+                  <span className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                    {activeCaptionWords.map((word, index) => {
+                      const hasBeenSpoken = currentTime >= word.endSec;
+
+                      return (
+                        <span
+                          key={`${word.startSec}-${word.endSec}-${index}`}
+                          className={`inline-block transition-colors duration-75 ${
+                            hasBeenSpoken ? "text-white" : "text-[#00d2ff]"
+                          }`}
+                        >
+                          {word.text}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : captionStyle === "boldYellow" ? (
+                  <span className="text-[#ffff00]">{activeCaptionText}</span>
+                ) : (
+                  <span>{activeCaptionText}</span>
+                )}
+              </div>
             </div>
           )}
 

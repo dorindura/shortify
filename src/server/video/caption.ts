@@ -40,7 +40,7 @@ type WhisperVerboseResponse = {
   segments: WhisperSegment[];
 };
 
-export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+export type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
 
 export type CaptionDraftWord = {
   text: string;
@@ -451,6 +451,10 @@ function buildDefaultStyleLine(style: CaptionStyle, fontName: string): string {
     );
   }
 
+  if (style === "wordByWord" || style === "progressiveWords") {
+    return buildDefaultStyleLine("karaoke", fontName);
+  }
+
   return (
     "Style: " +
     [
@@ -542,6 +546,10 @@ function buildCenterWordStyleLine(style: CaptionStyle, fontName: string): string
         1,
       ].join(",")
     );
+  }
+
+  if (style === "wordByWord" || style === "progressiveWords") {
+    return buildCenterWordStyleLine("karaoke", fontName);
   }
 
   return (
@@ -929,6 +937,76 @@ function buildCenterProgressiveWordsEvents(
   });
 }
 
+function buildBottomWordByWordEvents(
+  chunk: CaptionDraftChunk,
+  customKeywords?: string[],
+): Array<{ start: string; end: string; styleName: string; text: string }> {
+  const words = getValidWordsFromChunk(chunk).filter((w) => normalizeText(w.text));
+
+  return words.map((word, index) => {
+    const rawWord = safeAssText(word.text);
+    const nextWord = words[index + 1];
+    const startSec = Math.max(chunk.startSec, word.startSec);
+    const naturalEndSec = Math.max(startSec + 0.08, word.endSec);
+    const maxEndBeforeNext = nextWord
+      ? Math.max(startSec + 0.08, nextWord.startSec - 0.015)
+      : naturalEndSec + 0.1;
+    const endSec = Math.max(startSec + 0.08, Math.min(naturalEndSec + 0.06, maxEndBeforeNext));
+    const durMs = Math.max(90, Math.round((endSec - startSec) * 1000));
+    const popInEnd = Math.min(85, durMs);
+    const popOutStart = Math.max(durMs - 75, 0);
+    const popScale = clamp(KARAOKE_POP_SCALE, 108, 134);
+
+    const text =
+      lineFade() +
+      premiumWordTags(rawWord, customKeywords) +
+      `{\\t(0,${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
+      `\\t(${popOutStart},${durMs},\\fscx100\\fscy100)}` +
+      rawWord;
+
+    return {
+      start: secondsToAssTime(startSec),
+      end: secondsToAssTime(endSec),
+      styleName: "Default",
+      text,
+    };
+  });
+}
+
+function buildBottomProgressiveWordsEvents(
+  chunk: CaptionDraftChunk,
+  customKeywords?: string[],
+): Array<{ start: string; end: string; styleName: string; text: string }> {
+  const words = getValidWordsFromChunk(chunk).filter((w) => normalizeText(w.text));
+
+  if (!words.length) return [];
+
+  return words.map((word, index) => {
+    const nextWord = words[index + 1];
+    const startSec = Math.max(chunk.startSec, word.startSec);
+    const endSec = nextWord
+      ? Math.max(startSec + 0.08, nextWord.startSec - 0.012)
+      : Math.max(startSec + 0.12, word.endSec + 0.12);
+    const durMs = Math.max(100, Math.round((endSec - startSec) * 1000));
+    const popInEnd = Math.min(90, durMs);
+    const popScale = 108;
+    const lineText = buildProgressiveWordsLineText(words, index, customKeywords);
+
+    const text =
+      lineFade() +
+      `{\\t(0,${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
+      `\\t(${popInEnd},${durMs},\\fscx100\\fscy100)}` +
+      lineText;
+
+    return {
+      start: secondsToAssTime(startSec),
+      end: secondsToAssTime(endSec),
+      styleName: "Default",
+      text,
+    };
+  });
+}
+
 function applyInlineStyle(text: string, style: CaptionStyle) {
   if (style === "boldYellow") {
     return `{\\b1\\bord7\\shad4\\c&H0000FFFF&}${text}`;
@@ -1020,6 +1098,48 @@ function draftClipToAss(
   let ass = buildAssHeader(captionStyle, fontName);
 
   for (const chunk of draftClip.chunks) {
+    if (!quoteReelCaptionPreset && captionStyle === "wordByWord") {
+      for (const event of buildBottomWordByWordEvents(chunk, customKeywords)) {
+        const dialogue = [
+          "Dialogue: 0",
+          event.start,
+          event.end,
+          event.styleName,
+          "",
+          "0",
+          "0",
+          "0",
+          "",
+          event.text,
+        ].join(",");
+
+        ass += dialogue + "\n";
+      }
+
+      continue;
+    }
+
+    if (!quoteReelCaptionPreset && captionStyle === "progressiveWords") {
+      for (const event of buildBottomProgressiveWordsEvents(chunk, customKeywords)) {
+        const dialogue = [
+          "Dialogue: 0",
+          event.start,
+          event.end,
+          event.styleName,
+          "",
+          "0",
+          "0",
+          "0",
+          "",
+          event.text,
+        ].join(",");
+
+        ass += dialogue + "\n";
+      }
+
+      continue;
+    }
+
     if (
       quoteReelCaptionPreset === "card_center_word_by_word" ||
       quoteReelCaptionPreset === "card_center_progressive_words" ||

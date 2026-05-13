@@ -66,7 +66,11 @@ export async function registerUrlRoute(app: FastifyInstance) {
 
     const rawStyle = body.captionStyle as CaptionStyle | undefined;
     const captionStyle: CaptionStyle =
-      rawStyle === "boldYellow" || rawStyle === "subtle" || rawStyle === "karaoke"
+      rawStyle === "boldYellow" ||
+      rawStyle === "subtle" ||
+      rawStyle === "karaoke" ||
+      rawStyle === "wordByWord" ||
+      rawStyle === "progressiveWords"
         ? rawStyle
         : "karaoke";
 

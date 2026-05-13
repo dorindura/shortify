@@ -60,7 +60,13 @@ function clamp(n: number, min: number, max: number) {
 }
 
 function isCaptionStyle(value: unknown): value is CaptionStyle {
-  return value === "boldYellow" || value === "subtle" || value === "karaoke";
+  return (
+    value === "boldYellow" ||
+    value === "subtle" ||
+    value === "karaoke" ||
+    value === "wordByWord" ||
+    value === "progressiveWords"
+  );
 }
 
 function isQuoteReelMode(value: unknown): value is QuoteReelMode {
