@@ -2,13 +2,20 @@ import type { CustomRange, LocalShortsSelectionMode } from "../home.types";
 import CustomRangesEditor from "./CustomRangesEditor";
 
 type Props = {
-  jobGoal: "shorts" | "summary" | "quote_reel";
+  jobGoal: "shorts" | "summary" | "quote_reel" | "multi_source_edit";
   selectionMode: LocalShortsSelectionMode;
   setSelectionMode: (value: LocalShortsSelectionMode) => void;
   customRanges: CustomRange[];
-  onAddRange: () => void;
-  onRemoveRange: (id: string) => void;
-  onChangeRange: (id: string, field: "startSec" | "endSec", value: string) => void;
+  onAddClip: () => void;
+  onRemoveClip: (clipId: string) => void;
+  onAddRange: (clipId: string) => void;
+  onRemoveRange: (clipId: string, rangeId: string) => void;
+  onChangeRange: (
+    clipId: string,
+    rangeId: string,
+    field: "startSec" | "endSec",
+    value: string,
+  ) => void;
 };
 
 export default function ShortsSelectionSection({
@@ -16,6 +23,8 @@ export default function ShortsSelectionSection({
   selectionMode,
   setSelectionMode,
   customRanges,
+  onAddClip,
+  onRemoveClip,
   onAddRange,
   onRemoveRange,
   onChangeRange,
@@ -58,7 +67,7 @@ export default function ShortsSelectionSection({
         >
           <div className="font-semibold">Custom periods</div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            Choose exact start and end moments for each short.
+            Build each short from one or more exact source moments.
           </div>
         </button>
       </div>
@@ -66,9 +75,11 @@ export default function ShortsSelectionSection({
       {selectionMode === "custom" && (
         <CustomRangesEditor
           customRanges={customRanges}
-          onAdd={onAddRange}
-          onRemove={onRemoveRange}
-          onChange={onChangeRange}
+          onAddClip={onAddClip}
+          onRemoveClip={onRemoveClip}
+          onAddRange={onAddRange}
+          onRemoveRange={onRemoveRange}
+          onChangeRange={onChangeRange}
         />
       )}
     </div>

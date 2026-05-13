@@ -19,6 +19,13 @@ export async function registerUrlRoute(app: FastifyInstance) {
     const selectionMode = body.selectionMode === "custom" ? "custom" : "auto";
 
     const customRanges = Array.isArray(body.customRanges) ? body.customRanges : [];
+    const customClipCount =
+      selectionMode === "custom"
+        ? customRanges.filter((item: unknown) => {
+            const clip = (item ?? {}) as { ranges?: unknown; startSec?: unknown };
+            return Array.isArray(clip.ranges) ? clip.ranges.length > 0 : clip.startSec != null;
+          }).length
+        : 0;
 
     if (!body || typeof body.url !== "string") {
       return reply.code(400).send({ error: "Missing url" });
@@ -48,7 +55,12 @@ export async function registerUrlRoute(app: FastifyInstance) {
         ? body.clipDurationSec
         : 30;
 
-    const maxClips = typeof body.maxClips === "number" && body.maxClips > 0 ? body.maxClips : 3;
+    const maxClips =
+      selectionMode === "custom" && customClipCount > 0
+        ? customClipCount
+        : typeof body.maxClips === "number" && body.maxClips > 0
+          ? body.maxClips
+          : 3;
 
     const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
 

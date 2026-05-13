@@ -40,9 +40,16 @@ type Props = {
   selectionMode: LocalShortsSelectionMode;
   setSelectionMode: (value: LocalShortsSelectionMode) => void;
   customRanges: CustomRange[];
-  onAddRange: () => void;
-  onRemoveRange: (id: string) => void;
-  onChangeRange: (id: string, field: "startSec" | "endSec", value: string) => void;
+  onAddCustomClip: () => void;
+  onRemoveCustomClip: (clipId: string) => void;
+  onAddCustomRange: (clipId: string) => void;
+  onRemoveCustomRange: (clipId: string, rangeId: string) => void;
+  onChangeCustomRange: (
+    clipId: string,
+    rangeId: string,
+    field: "startSec" | "endSec",
+    value: string,
+  ) => void;
   validCustomRangesCount: number;
   clipDurationSec: number;
   setClipDurationSec: (value: number) => void;
@@ -108,9 +115,11 @@ export default function CreateJobPanel(props: Props) {
     selectionMode,
     setSelectionMode,
     customRanges,
-    onAddRange,
-    onRemoveRange,
-    onChangeRange,
+    onAddCustomClip,
+    onRemoveCustomClip,
+    onAddCustomRange,
+    onRemoveCustomRange,
+    onChangeCustomRange,
     validCustomRangesCount,
     clipDurationSec,
     setClipDurationSec,
@@ -314,9 +323,11 @@ export default function CreateJobPanel(props: Props) {
             selectionMode={selectionMode}
             setSelectionMode={setSelectionMode}
             customRanges={customRanges}
-            onAddRange={onAddRange}
-            onRemoveRange={onRemoveRange}
-            onChangeRange={onChangeRange}
+            onAddClip={onAddCustomClip}
+            onRemoveClip={onRemoveCustomClip}
+            onAddRange={onAddCustomRange}
+            onRemoveRange={onRemoveCustomRange}
+            onChangeRange={onChangeCustomRange}
           />
         )}
 
@@ -352,7 +363,6 @@ export default function CreateJobPanel(props: Props) {
             maxDurationSec={maxDurationSec}
             setMaxDurationSec={setMaxDurationSec}
             captionsEnabled={captionsEnabled}
-            captionStyle={captionStyle}
             setCaptionsEnabled={setCaptionsEnabled}
             quoteCaptionPreset={quoteCaptionPreset}
             setQuoteCaptionPreset={setQuoteCaptionPreset}

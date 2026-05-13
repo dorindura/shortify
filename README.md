@@ -7,7 +7,7 @@ The product is branded as **Hookify** in the UI, while the repo/package/deployme
 ## What This App Does
 
 - Creates short clips from uploaded videos or URLs.
-- Supports automatic AI clip selection and manual custom time ranges.
+- Supports automatic AI clip selection and manual custom clips made from one or more time ranges.
 - Generates caption drafts, smart crops, preview clips, and review-ready edits.
 - Lets users edit captions, overlays, black-and-white ranges, and endings before final render.
 - Generates quote reels from manual text or an AI prompt, with optional ElevenLabs voiceover.
@@ -53,7 +53,7 @@ fly.toml                         Fly.io app/process/service config
 2. Fastify validates the user with Supabase auth (`requireUser`) and creates a `jobs` row.
 3. Fastify enqueues a BullMQ job whose payload is only `{ jobId }`.
 4. The worker fetches the job from Supabase and dispatches by `job_goal`:
-   - `shorts`: download/upload source, select clips, create caption drafts, analyze audio/face crops, render previews, wait for review.
+   - `shorts`: download/upload source, select clips, or stitch custom range groups into custom clips, create caption drafts, analyze audio/face crops, render previews, wait for review.
    - `summary`: select/assemble highlights and render a final summary.
    - `quote_reel`: generate or normalize script, select bundled assets, create voiceover/captions, render final video.
    - `multi_source_edit`: download selected sources, cut ranges, normalize, concat, upload a draft, wait for review.
@@ -153,7 +153,7 @@ This project depends on these environment variable names. Values must stay secre
 
 No SQL migrations are currently committed in this repo. The code expects these tables/objects to exist:
 
-- `jobs`: central job table, including owner/status/stage/progress/source, render outputs, review data, quote reel metadata, multi-source config, ending config, soft-delete fields, and timestamps.
+- `jobs`: central job table, including owner/status/stage/progress/source, render outputs, review data, quote reel metadata, custom shorts config, multi-source config, ending config, soft-delete fields, and timestamps.
 - `profiles`: includes at least `id`, `role`, and `created_at`.
 - `usage_daily`: tracks free-plan jobs by `user_id` and `day`.
 - `stripe_customers`: maps app users to Stripe customer ids.

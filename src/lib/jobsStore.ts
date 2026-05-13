@@ -23,13 +23,7 @@ export type JobStage =
 
 export type JobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_edit";
 
-export type QuoteReelTone =
-  | "aggressive"
-  | "cinematic"
-  | "calm"
-  | "dark"
-  | "emotional"
-  | "stoic";
+export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark" | "emotional" | "stoic";
 
 export type QuoteReelMode = "manual_text" | "ai_text";
 
@@ -40,12 +34,7 @@ export type QuoteReelVoicePreset =
   | "motivational_male"
   | "neutral";
 
-export type QuoteReelSegmentType =
-  | "hook"
-  | "setup"
-  | "build"
-  | "payoff"
-  | "cta";
+export type QuoteReelSegmentType = "hook" | "setup" | "build" | "payoff" | "cta";
 
 export type QuoteReelCaptionPreset =
   | "card_bottom_karaoke"
@@ -60,9 +49,14 @@ export type ShortsCustomRange = {
   endSec: number;
 };
 
+export type ShortsCustomClip = {
+  id: string;
+  ranges: ShortsCustomRange[];
+};
+
 export type ShortsConfig = {
   selectionMode: ShortsSelectionMode;
-  customRanges?: ShortsCustomRange[];
+  customRanges?: (ShortsCustomRange | ShortsCustomClip)[];
 };
 
 export type CaptionDraftWord = {
@@ -311,11 +305,7 @@ export function setJobCaptionedClips(id: string, urls: string[]) {
   }
 }
 
-export function setJobCaptionedResults(
-  id: string,
-  clipUrls: string[],
-  thumbUrls: string[],
-) {
+export function setJobCaptionedResults(id: string, clipUrls: string[], thumbUrls: string[]) {
   const job = jobs.find((j) => j.id === id);
   if (job) {
     job.captionedClips = clipUrls;

@@ -88,7 +88,10 @@ export default function HomePageClient() {
 
   const [selectionMode, setSelectionMode] = useState<LocalShortsSelectionMode>("auto");
   const [customRanges, setCustomRanges] = useState<CustomRange[]>([
-    { id: crypto.randomUUID(), startSec: "", endSec: "" },
+    {
+      id: crypto.randomUUID(),
+      ranges: [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+    },
   ]);
 
   const [multiSourceInputs, setMultiSourceInputs] = useState<MultiSourceInput[]>([
@@ -127,21 +130,71 @@ export default function HomePageClient() {
 
   const reviewJob = jobs.find((job) => job.id === reviewJobId) ?? null;
 
-  function addCustomRange() {
-    setCustomRanges((prev) => [...prev, { id: crypto.randomUUID(), startSec: "", endSec: "" }]);
+  function createEmptyCustomClip(): CustomRange {
+    return {
+      id: crypto.randomUUID(),
+      ranges: [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+    };
   }
 
-  function updateCustomRange(id: string, field: "startSec" | "endSec", value: string) {
+  function addCustomClip() {
+    setCustomRanges((prev) => [...prev, createEmptyCustomClip()]);
+  }
+
+  function removeCustomClip(clipId: string) {
+    setCustomRanges((prev) => {
+      const next = prev.filter((clip) => clip.id !== clipId);
+      return next.length ? next : [createEmptyCustomClip()];
+    });
+  }
+
+  function addCustomRange(clipId: string) {
     setCustomRanges((prev) =>
-      prev.map((range) => (range.id === id ? { ...range, [field]: value } : range)),
+      prev.map((clip) =>
+        clip.id === clipId
+          ? {
+              ...clip,
+              ranges: [...clip.ranges, { id: crypto.randomUUID(), startSec: "", endSec: "" }],
+            }
+          : clip,
+      ),
     );
   }
 
-  function removeCustomRange(id: string) {
+  function removeCustomRange(clipId: string, rangeId: string) {
     setCustomRanges((prev) => {
-      const next = prev.filter((range) => range.id !== id);
-      return next.length ? next : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }];
+      return prev.map((clip) => {
+        if (clip.id !== clipId) return clip;
+        const nextRanges = clip.ranges.filter((range) => range.id !== rangeId);
+
+        return {
+          ...clip,
+          ranges: nextRanges.length
+            ? nextRanges
+            : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+        };
+      });
     });
+  }
+
+  function updateCustomRange(
+    clipId: string,
+    rangeId: string,
+    field: "startSec" | "endSec",
+    value: string,
+  ) {
+    setCustomRanges((prev) =>
+      prev.map((clip) =>
+        clip.id === clipId
+          ? {
+              ...clip,
+              ranges: clip.ranges.map((range) =>
+                range.id === rangeId ? { ...range, [field]: value } : range,
+              ),
+            }
+          : clip,
+      ),
+    );
   }
 
   function addMultiSourceInput() {
@@ -670,9 +723,11 @@ export default function HomePageClient() {
             selectionMode={selectionMode}
             setSelectionMode={setSelectionMode}
             customRanges={customRanges}
-            onAddRange={addCustomRange}
-            onRemoveRange={removeCustomRange}
-            onChangeRange={updateCustomRange}
+            onAddCustomClip={addCustomClip}
+            onRemoveCustomClip={removeCustomClip}
+            onAddCustomRange={addCustomRange}
+            onRemoveCustomRange={removeCustomRange}
+            onChangeCustomRange={updateCustomRange}
             validCustomRangesCount={validCustomRangesCount}
             clipDurationSec={clipDurationSec}
             setClipDurationSec={setClipDurationSec}
@@ -743,7 +798,7 @@ export default function HomePageClient() {
 
       {reviewJob && reviewJob.jobGoal === "multi_source_edit" && reviewJob.reviewReady && (
         <MultiSourceReviewPanel
-          job={reviewJob as any}
+          job={reviewJob}
           apiBaseUrl={API}
           authedJsonFetch={authedJsonFetch}
           onClose={() => setReviewJobId(null)}

@@ -27,25 +27,45 @@ export function parseTimeToSeconds(input: string): number | null {
 
 export function buildCustomRangesPayload(customRanges: CustomRange[]) {
   return customRanges
-    .map((range) => ({
-      id: range.id,
-      startSec: parseTimeToSeconds(range.startSec),
-      endSec: parseTimeToSeconds(range.endSec),
-    }))
+    .map((clip) => {
+      const ranges = clip.ranges
+        .map((range) => ({
+          id: range.id,
+          startSec: parseTimeToSeconds(range.startSec),
+          endSec: parseTimeToSeconds(range.endSec),
+        }))
+        .filter(
+          (
+            range,
+          ): range is {
+            id: string;
+            startSec: number;
+            endSec: number;
+          } =>
+            typeof range.startSec === "number" &&
+            typeof range.endSec === "number" &&
+            Number.isFinite(range.startSec) &&
+            Number.isFinite(range.endSec) &&
+            range.endSec > range.startSec &&
+            range.endSec - range.startSec >= 0.6,
+        );
+
+      return {
+        id: clip.id,
+        ranges,
+      };
+    })
     .filter(
       (
-        range,
-      ): range is {
+        clip,
+      ): clip is {
         id: string;
-        startSec: number;
-        endSec: number;
-      } =>
-        typeof range.startSec === "number" &&
-        typeof range.endSec === "number" &&
-        Number.isFinite(range.startSec) &&
-        Number.isFinite(range.endSec) &&
-        range.endSec > range.startSec &&
-        range.endSec - range.startSec >= 0.6,
+        ranges: {
+          id: string;
+          startSec: number;
+          endSec: number;
+        }[];
+      } => clip.ranges.length > 0,
     );
 }
 

@@ -72,9 +72,19 @@ export async function registerUploadRoute(app: FastifyInstance) {
       customRanges = [];
     }
 
+    const customClipCount =
+      selectionMode === "custom"
+        ? customRanges.filter((item: unknown) => {
+            const clip = (item ?? {}) as { ranges?: unknown; startSec?: unknown };
+            return Array.isArray(clip.ranges) ? clip.ranges.length > 0 : clip.startSec != null;
+          }).length
+        : 0;
+
+    const requestedMaxClips = customClipCount > 0 ? customClipCount : maxClips;
+
     const limit = await enforceJobLimits(user.id, {
       clipDurationSec,
-      maxClips,
+      maxClips: requestedMaxClips,
       aspect,
       jobGoal,
       summaryTargetSec,
@@ -108,7 +118,7 @@ export async function registerUploadRoute(app: FastifyInstance) {
       updatedAt: now,
       aspect,
       clipDurationSec,
-      maxClips,
+      maxClips: requestedMaxClips,
       captionsEnabled,
       captionStyle,
       jobGoal,

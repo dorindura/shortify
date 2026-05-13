@@ -43,7 +43,7 @@ This file is the project context for future AI/coding-agent conversations in thi
 
 ## Job Types And Goals
 
-- `shorts`: URL/upload source, AI or custom clip ranges, caption drafts, face-aware smart crop, preview render, user review, final render.
+- `shorts`: URL/upload source, AI clips or custom clip groups, caption drafts, face-aware smart crop, preview render, user review, final render. In custom mode, each custom clip can contain multiple time ranges that are stitched together into one short.
 - `summary`: URL/upload source, AI-selected highlight ranges, concatenated summary, final render.
 - `quote_reel`: manual text or AI prompt, script plan, bundled visual asset selection, optional voiceover, captions, final vertical render.
 - `multi_source_edit`: selected ranges from up to 5 URLs, draft assembly, review overlays/effects/ending, final render.
@@ -55,6 +55,8 @@ The shared job types live in `src/lib/jobsStore.ts`.
 - `src/app/page.tsx`: landing page.
 - `src/app/dashboard/page.tsx`: authenticated dashboard entry.
 - `src/components/home/HomePageClient.tsx`: main job creation/list/review client logic.
+- `src/components/home/sections/CustomRangesEditor.tsx`: custom AI Shorts editor; each custom clip contains one or more ranges.
+- `src/components/home/review/MultiSourceReviewPanel.tsx`: multi-source review panel using the same preview/overlays/ending/effects surface as AI Shorts, adapted to one assembled timeline.
 - `src/server/index.ts`: Fastify app and route registration.
 - `src/server/routes/url.ts`: create URL jobs.
 - `src/server/routes/upload.ts`: create upload jobs.
