@@ -72,9 +72,38 @@ async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
 }
 
-function getEnvNumber(name: string, fallback: number) {
+function getOptionalEnvNumber(name: string) {
   const raw = Number(process.env[name]);
-  return Number.isFinite(raw) ? raw : fallback;
+  return Number.isFinite(raw) ? raw : undefined;
+}
+
+function resolveVoiceSpeed(
+  preset: QuoteReelVoicePreset,
+  tone?: QuoteReelTone,
+) {
+  const envSpeed = getOptionalEnvNumber("ELEVENLABS_SPEED");
+  if (envSpeed != null) return clamp(envSpeed, 0.85, 1);
+
+  let speed = 0.92;
+
+  if (preset === "motivational_male") {
+    speed = 0.95;
+  } else if (preset === "dark_male") {
+    speed = 0.9;
+  } else if (preset === "storyteller") {
+    speed = 0.91;
+  } else if (preset === "soft_female") {
+    speed = 0.9;
+  } else if (preset === "neutral") {
+    speed = 0.93;
+  }
+
+  if (tone === "aggressive") speed += 0.03;
+  if (tone === "calm") speed -= 0.03;
+  if (tone === "emotional") speed -= 0.02;
+  if (tone === "stoic") speed -= 0.02;
+
+  return clamp(speed, 0.85, 1);
 }
 
 function runCmd(
@@ -198,30 +227,31 @@ function buildVoiceSettings(
 ) {
   const isV3 = modelId === "eleven_v3";
 
-  let stability = getEnvNumber("ELEVENLABS_STABILITY", 0.3);
-  let similarityBoost = getEnvNumber("ELEVENLABS_SIMILARITY", 0.85);
-  let style = getEnvNumber("ELEVENLABS_STYLE", 0.35);
+  let stability = 0.5;
+  let similarityBoost = 0.8;
+  let style = 0.24;
+  const speed = resolveVoiceSpeed(preset, tone);
 
   if (preset === "motivational_male") {
-    stability = 0.22;
+    stability = 0.42;
     similarityBoost = 0.8;
-    style = 0.55;
+    style = 0.34;
   } else if (preset === "dark_male") {
-    stability = 0.28;
-    similarityBoost = 0.84;
-    style = 0.48;
-  } else if (preset === "storyteller") {
-    stability = 0.3;
-    similarityBoost = 0.82;
-    style = 0.52;
-  } else if (preset === "soft_female") {
-    stability = 0.38;
+    stability = 0.5;
     similarityBoost = 0.8;
-    style = 0.42;
+    style = 0.28;
+  } else if (preset === "storyteller") {
+    stability = 0.48;
+    similarityBoost = 0.78;
+    style = 0.32;
+  } else if (preset === "soft_female") {
+    stability = 0.56;
+    similarityBoost = 0.78;
+    style = 0.22;
   } else if (preset === "neutral") {
-    stability = 0.35;
-    similarityBoost = 0.85;
-    style = 0.3;
+    stability = 0.52;
+    similarityBoost = 0.82;
+    style = 0.2;
   }
 
   if (tone === "aggressive") {
@@ -244,10 +274,16 @@ function buildVoiceSettings(
     style -= 0.02;
   }
 
+  stability = getOptionalEnvNumber("ELEVENLABS_STABILITY") ?? stability;
+  similarityBoost = getOptionalEnvNumber("ELEVENLABS_SIMILARITY") ??
+    similarityBoost;
+  style = getOptionalEnvNumber("ELEVENLABS_STYLE") ?? style;
+
   return {
     stability: clamp(stability, 0, 1),
     similarity_boost: clamp(similarityBoost, 0, 1),
     style: clamp(isV3 ? Math.min(style, 0.6) : style, 0, 1),
+    speed,
     use_speaker_boost: true,
   };
 }
