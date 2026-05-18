@@ -70,6 +70,11 @@ type SubtitleGenerationOptions = {
 };
 
 const DEFAULT_FONT = "Inter";
+const CAPTION_FONT_ALIASES: Record<string, string> = {
+  gluten: "Gluten Medium",
+  "gluten regular": "Gluten Medium",
+  "gluten-regular": "Gluten Medium",
+};
 
 const CHUNK_SIZE = 4;
 const CAPTION_CHUNK_BREAK_GAP_SEC = Number(
@@ -333,6 +338,13 @@ function premiumWordTags(word: string, customKeywords?: string[]): string {
   const color = assColorForWord(word, customKeywords);
 
   return `{\\c${color}\\3c${PREMIUM_OUTLINE_COLOR}}`;
+}
+
+function resolveCaptionFontName(fontName: string): string {
+  const cleanFontName = fontName.trim();
+  if (!cleanFontName) return DEFAULT_FONT;
+
+  return CAPTION_FONT_ALIASES[cleanFontName.toLowerCase()] ?? cleanFontName;
 }
 
 function buildAssHeader(style: CaptionStyle, fontName = DEFAULT_FONT): string {
@@ -1245,7 +1257,7 @@ export async function generateSubtitlesFromDrafts(
   await ensureDir(SUBS_DIR);
 
   const captionStyle = options?.captionStyle ?? "karaoke";
-  const fontName = options?.fontName ?? PREMIUM_FONT;
+  const fontName = resolveCaptionFontName(options?.fontName ?? PREMIUM_FONT);
   const quoteReelCaptionPreset = options?.quoteReelCaptionPreset;
   const captionOffsetSec = Number.isFinite(options?.captionOffsetSec)
     ? Number(options?.captionOffsetSec)
