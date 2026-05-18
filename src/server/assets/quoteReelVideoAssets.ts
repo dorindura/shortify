@@ -18,8 +18,50 @@ type PickAssetsInput = {
   segments: QuoteReelSegment[];
 };
 
+const CATEGORY_TOKEN_ALIASES: Record<string, string[]> = {
+  anger: ["angry"],
+  awkward: ["awkward_moments"],
+  broken_glass: ["broken_glass"],
+  included: ["being_included"],
+  judged: ["being_judged"],
+  proud: ["proudness"],
+  shock: ["shocking"],
+  silhouette: ["silhouettes"],
+};
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeCategoryToken(value: string) {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function getCategoryTokens(categoryPath: string): string[] {
+  return categoryPath
+    .split("/")
+    .flatMap((part) => normalizeCategoryToken(part).split("_"))
+    .filter(Boolean);
+}
+
+function categoryMatchesTag(categoryPath: string, tag: string): boolean {
+  const normalizedTag = normalizeCategoryToken(tag);
+  if (!normalizedTag) return false;
+
+  const aliases = CATEGORY_TOKEN_ALIASES[normalizedTag] ?? [];
+  const candidates = new Set([normalizedTag, ...aliases]);
+  const normalizedCategory = normalizeCategoryToken(categoryPath);
+  const categoryTokens = getCategoryTokens(categoryPath);
+
+  for (const candidate of candidates) {
+    if (normalizedCategory.includes(candidate)) return true;
+    if (categoryTokens.includes(candidate)) return true;
+  }
+
+  return false;
 }
 
 function shuffle<T>(items: T[]): T[] {
@@ -72,120 +114,37 @@ function toCategoryPath(absPath: string): string {
   return parts.slice(0, -1).join("/");
 }
 
-export async function listQuoteReelVideoAssets(): Promise<
-  QuoteReelVideoAsset[]
-> {
+export async function listQuoteReelVideoAssets(): Promise<QuoteReelVideoAsset[]> {
   const files = await walkVideoFiles(VIDEO_ROOT);
 
   return files.map((assetPath) => ({
     assetPath,
-    relativePath: path.relative(VIDEO_ROOT, assetPath).split(path.sep).join(
-      "/",
-    ),
+    relativePath: path.relative(VIDEO_ROOT, assetPath).split(path.sep).join("/"),
     categoryPath: toCategoryPath(assetPath),
     filename: path.basename(assetPath),
   }));
 }
 
 const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
-  alone: [
-    "characters/alone",
-    "social_situations/loneliness_in_crowd",
-    "symbolic/window",
-  ],
-  anger: [
-    "emotions/angry",
-    "energy/intense",
-    "characters/fight",
-    "actions/reacting",
-  ],
-  anxiety: [
-    "emotions/anxiety",
-    "characters/staring",
-    "scenes_by_context/room",
-    "symbolic/rain",
-  ],
-  arriving: [
-    "actions/arriving",
-    "scenes_by_context/street",
-    "scenes_by_context/public_transport",
-  ],
-  attention: [
-    "hooks/attention",
-    "characters/staring",
-    "actions/observing",
-  ],
-  awkward: [
-    "social_situations/awkward_moments",
-    "social_situations/being_judged",
-  ],
-  bond: [
-    "energy/bond",
-    "social_situations/friendship",
-    "characters/duo",
-  ],
-  calm: [
-    "energy/calm",
-    "emotions/peace",
-    "symbolic/sky",
-    "symbolic/ocean",
-  ],
-  chaos: [
-    "energy/chaos",
-    "emotions/angry",
-    "hooks/shocking",
-  ],
-  city_night: [
-    "symbolic/city_night",
-    "symbolic/shadows",
-    "scenes_by_context/street",
-  ],
-  confidence: [
-    "emotions/confidence",
-    "characters/walking",
-    "characters/faceless",
-  ],
-  curiosity: [
-    "hooks/curiosity",
-    "actions/observing",
-    "characters/thinking",
-  ],
-  dark: [
-    "symbolic/shadows",
-    "symbolic/city_night",
-    "symbolic/rain",
-  ],
-  duo: [
-    "characters/duo",
-    "social_situations/friendship",
-    "social_situations/being_included",
-  ],
-  emotional: [
-    "hooks/emotional",
-    "emotions/sadness",
-    "symbolic/rain",
-  ],
-  empathy: [
-    "emotions/empathy",
-    "actions/helping",
-    "social_situations/friendship",
-  ],
-  faceless: [
-    "characters/faceless",
-    "symbolic/silhouettes",
-    "symbolic/shadows",
-  ],
-  fire: [
-    "symbolic/fire",
-    "energy/intense",
-    "hooks/shocking",
-  ],
-  forgiveness: [
-    "emotions/peace",
-    "emotions/empathy",
-    "actions/listening",
-    "symbolic/sunrise",
-  ],
+  alone: ["characters/alone", "social_situations/loneliness_in_crowd", "symbolic/window"],
+  anger: ["emotions/angry", "energy/intense", "characters/fight", "actions/reacting"],
+  anxiety: ["emotions/anxiety", "characters/staring", "scenes_by_context/room", "symbolic/rain"],
+  arriving: ["actions/arriving", "scenes_by_context/street", "scenes_by_context/public_transport"],
+  attention: ["hooks/attention", "characters/staring", "actions/observing"],
+  awkward: ["social_situations/awkward_moments", "social_situations/being_judged"],
+  bond: ["energy/bond", "social_situations/friendship", "characters/duo"],
+  calm: ["energy/calm", "emotions/peace", "symbolic/sky", "symbolic/ocean"],
+  chaos: ["energy/chaos", "emotions/angry", "hooks/shocking"],
+  city_night: ["symbolic/city_night", "symbolic/shadows", "scenes_by_context/street"],
+  confidence: ["emotions/confidence", "characters/walking", "characters/faceless"],
+  curiosity: ["hooks/curiosity", "actions/observing", "characters/thinking"],
+  dark: ["symbolic/shadows", "symbolic/city_night", "symbolic/rain"],
+  duo: ["characters/duo", "social_situations/friendship", "social_situations/being_included"],
+  emotional: ["hooks/emotional", "emotions/sadness", "symbolic/rain"],
+  empathy: ["emotions/empathy", "actions/helping", "social_situations/friendship"],
+  faceless: ["characters/faceless", "symbolic/silhouettes", "symbolic/shadows"],
+  fire: ["symbolic/fire", "energy/intense", "hooks/shocking"],
+  forgiveness: ["emotions/peace", "emotions/empathy", "actions/listening", "symbolic/sunrise"],
   friendship: [
     "social_situations/friendship",
     "characters/duo",
@@ -196,209 +155,69 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
     "social_situations/group_dynamics",
     "social_situations/being_included",
   ],
-  healing: [
-    "emotions/peace",
-    "symbolic/sunrise",
-    "symbolic/sky",
-    "symbolic/ocean",
-  ],
-  hope: [
-    "symbolic/sunrise",
-    "symbolic/sky",
-    "emotions/confidence",
-  ],
-  ignoring: [
-    "actions/ignoring",
-    "social_situations/being_judged",
-  ],
+  healing: ["emotions/peace", "symbolic/sunrise", "symbolic/sky", "symbolic/ocean"],
+  hope: ["symbolic/sunrise", "symbolic/sky", "emotions/confidence"],
+  ignoring: ["actions/ignoring", "social_situations/being_judged"],
   included: [
     "social_situations/being_included",
     "social_situations/friendship",
     "characters/group",
   ],
-  intense: [
-    "energy/intense",
-    "hooks/shocking",
-    "characters/fight",
-  ],
+  intense: ["energy/intense", "hooks/shocking", "characters/fight"],
   judged: [
     "social_situations/being_judged",
     "social_situations/group_dynamics",
     "characters/group",
   ],
-  kindness: [
-    "emotions/kindness",
-    "actions/helping",
-    "emotions/empathy",
-  ],
-  leaving: [
-    "actions/leaving",
-    "characters/walking",
-    "scenes_by_context/street",
-  ],
-  listening: [
-    "actions/listening",
-    "characters/duo",
-    "actions/helping",
-  ],
-  loneliness: [
-    "emotions/loneliness",
-    "characters/alone",
-  ],
-  love: [
-    "emotions/love",
-    "social_situations/friendship",
-    "characters/duo",
-  ],
-  movement: [
-    "characters/walking",
-    "characters/stepping",
-    "actions/arriving",
-  ],
-  nostalgia: [
-    "emotions/nostalgia",
-    "symbolic/sunset",
-    "symbolic/window",
-  ],
-  observing: [
-    "actions/observing",
-    "characters/staring",
-    "characters/thinking",
-  ],
-  ocean: [
-    "symbolic/ocean",
-    "emotions/peace",
-  ],
-  pain: [
-    "emotions/sadness",
-    "emotions/anxiety",
-    "symbolic/rain",
-    "symbolic/window",
-  ],
-  peace: [
-    "emotions/peace",
-    "symbolic/sky",
-    "symbolic/ocean",
-    "symbolic/sunrise",
-  ],
-  protecting: [
-    "actions/protecting",
-    "actions/helping",
-    "characters/duo",
-  ],
-  rain: [
-    "symbolic/rain",
-    "emotions/sadness",
-    "symbolic/window",
-  ],
-  reacting: [
-    "actions/reacting",
-    "hooks/shocking",
-    "characters/staring",
-  ],
+  kindness: ["emotions/kindness", "actions/helping", "emotions/empathy"],
+  leaving: ["actions/leaving", "characters/walking", "scenes_by_context/street"],
+  listening: ["actions/listening", "characters/duo", "actions/helping"],
+  loneliness: ["emotions/loneliness", "characters/alone"],
+  love: ["emotions/love", "social_situations/friendship", "characters/duo"],
+  movement: ["characters/walking", "characters/stepping", "actions/arriving"],
+  nostalgia: ["emotions/nostalgia", "symbolic/sunset", "symbolic/window"],
+  observing: ["actions/observing", "characters/staring", "characters/thinking"],
+  ocean: ["symbolic/ocean", "emotions/peace"],
+  pain: ["emotions/sadness", "emotions/anxiety", "symbolic/rain", "symbolic/window"],
+  peace: ["emotions/peace", "symbolic/sky", "symbolic/ocean", "symbolic/sunrise"],
+  protecting: ["actions/protecting", "actions/helping", "characters/duo"],
+  rain: ["symbolic/rain", "emotions/sadness", "symbolic/window"],
+  reacting: ["actions/reacting", "hooks/shocking", "characters/staring"],
   reflection: [
     "characters/thinking",
     "symbolic/window",
     "scenes_by_context/room",
     "characters/staring",
   ],
-  regret: [
-    "emotions/sadness",
-    "characters/thinking",
-    "symbolic/rain",
-  ],
-  resilience: [
-    "emotions/confidence",
-    "characters/walking",
-    "symbolic/sunrise",
-  ],
-  room: [
-    "scenes_by_context/room",
-    "characters/sitting",
-    "characters/thinking",
-  ],
-  sadness: [
-    "emotions/sadness",
-    "symbolic/rain",
-    "characters/alone",
-  ],
+  regret: ["emotions/sadness", "characters/thinking", "symbolic/rain"],
+  resilience: ["emotions/confidence", "characters/walking", "symbolic/sunrise"],
+  room: ["scenes_by_context/room", "characters/sitting", "characters/thinking"],
+  sadness: ["emotions/sadness", "symbolic/rain", "characters/alone"],
   self_respect: [
     "emotions/confidence",
     "characters/faceless",
     "characters/walking",
     "symbolic/shadows",
   ],
-  shadows: [
-    "symbolic/shadows",
-    "symbolic/city_night",
-    "symbolic/silhouettes",
-  ],
-  shock: [
-    "hooks/shocking",
-    "actions/reacting",
-    "energy/chaos",
-  ],
-  silhouette: [
-    "symbolic/silhouettes",
-    "characters/faceless",
-    "symbolic/shadows",
-  ],
-  sky: [
-    "symbolic/sky",
-    "symbolic/sunrise",
-    "symbolic/sunset",
-  ],
-  slow_motion: [
-    "symbolic/silhouettes",
-    "characters/walking",
-  ],
-  stars: [
-    "symbolic/stars",
-    "symbolic/sky",
-    "symbolic/city_night",
-  ],
-  stoic: [
-    "characters/faceless",
-    "characters/thinking",
-    "symbolic/shadows",
-    "symbolic/window",
-  ],
-  street: [
-    "scenes_by_context/street",
-    "characters/walking",
-    "actions/arriving",
-  ],
-  strength: [
-    "emotions/confidence",
-    "energy/intense",
-    "characters/walking",
-  ],
-  sunrise: [
-    "symbolic/sunrise",
-    "symbolic/sky",
-    "emotions/peace",
-  ],
-  sunset: [
-    "symbolic/sunset",
-    "emotions/nostalgia",
-    "symbolic/sky",
-  ],
+  shadows: ["symbolic/shadows", "symbolic/city_night", "symbolic/silhouettes"],
+  shock: ["hooks/shocking", "actions/reacting", "energy/chaos"],
+  silhouette: ["symbolic/silhouettes", "characters/faceless", "symbolic/shadows"],
+  sky: ["symbolic/sky", "symbolic/sunrise", "symbolic/sunset"],
+  slow_motion: ["symbolic/silhouettes", "characters/walking"],
+  stars: ["symbolic/stars", "symbolic/sky", "symbolic/city_night"],
+  stoic: ["characters/faceless", "characters/thinking", "symbolic/shadows", "symbolic/window"],
+  street: ["scenes_by_context/street", "characters/walking", "actions/arriving"],
+  strength: ["emotions/confidence", "energy/intense", "characters/walking"],
+  sunrise: ["symbolic/sunrise", "symbolic/sky", "emotions/peace"],
+  sunset: ["symbolic/sunset", "emotions/nostalgia", "symbolic/sky"],
   thinking: [
     "characters/thinking",
     "characters/staring",
     "symbolic/window",
     "scenes_by_context/room",
   ],
-  walking: [
-    "characters/walking",
-    "characters/stepping",
-    "scenes_by_context/street",
-  ],
-  window: [
-    "symbolic/window",
-    "scenes_by_context/room",
-    "characters/thinking",
-  ],
+  walking: ["characters/walking", "characters/stepping", "scenes_by_context/street"],
+  window: ["symbolic/window", "scenes_by_context/room", "characters/thinking"],
 };
 
 const DEFAULT_CATEGORY_FALLBACKS = [
@@ -410,15 +229,23 @@ const DEFAULT_CATEGORY_FALLBACKS = [
   "actions/observing",
 ];
 
-function getCandidateCategoriesForTag(tag: string): string[] {
-  return VISUAL_TAG_CATEGORY_MAP[tag] ?? [];
+function getCandidateCategoriesForTag(tag: string, allCategoryPaths: string[]): string[] {
+  const curated = VISUAL_TAG_CATEGORY_MAP[tag] ?? [];
+  const discovered = allCategoryPaths.filter((categoryPath) =>
+    categoryMatchesTag(categoryPath, tag),
+  );
+
+  return [...curated, ...discovered];
 }
 
-function getCandidateCategoriesForSegment(segment: QuoteReelSegment): string[] {
+function getCandidateCategoriesForSegment(
+  segment: QuoteReelSegment,
+  allCategoryPaths: string[],
+): string[] {
   const ordered: string[] = [];
 
   for (const tag of segment.visualTags ?? []) {
-    ordered.push(...getCandidateCategoriesForTag(tag));
+    ordered.push(...getCandidateCategoriesForTag(tag, allCategoryPaths));
   }
 
   if (segment.type === "hook") {
@@ -430,18 +257,12 @@ function getCandidateCategoriesForSegment(segment: QuoteReelSegment): string[] {
   }
 
   if (segment.type === "payoff") {
-    ordered.unshift(
-      "emotions/confidence",
-      "symbolic/sunrise",
-      "emotions/peace",
-    );
+    ordered.unshift("emotions/confidence", "symbolic/sunrise", "emotions/peace");
   }
 
   ordered.push(...DEFAULT_CATEGORY_FALLBACKS);
 
-  return Array.from(
-    new Set(ordered.map((item) => normalizeWhitespace(item)).filter(Boolean)),
-  );
+  return Array.from(new Set(ordered.map((item) => normalizeWhitespace(item)).filter(Boolean)));
 }
 
 function scoreAssetForSegment(
@@ -452,23 +273,19 @@ function scoreAssetForSegment(
     previousCategoryPath?: string | null;
     usedAssetCounts: Map<string, number>;
     usedCategoryCounts: Map<string, number>;
+    allCategoryPaths: string[];
   },
 ): number {
   let score = 0;
-  const desiredCategories = getCandidateCategoriesForSegment(segment);
+  const desiredCategories = getCandidateCategoriesForSegment(segment, context.allCategoryPaths);
 
-  const categoryIndex = desiredCategories.findIndex((category) =>
-    category === asset.categoryPath
-  );
+  const categoryIndex = desiredCategories.findIndex((category) => category === asset.categoryPath);
   if (categoryIndex >= 0) {
     score += Math.max(120 - categoryIndex * 7, 25);
   }
 
   for (const tag of segment.visualTags ?? []) {
-    if (
-      asset.categoryPath.includes(tag) ||
-      asset.filename.toLowerCase().includes(tag)
-    ) {
+    if (asset.categoryPath.includes(tag) || asset.filename.toLowerCase().includes(tag)) {
       score += 18;
     }
   }
@@ -485,22 +302,16 @@ function scoreAssetForSegment(
     score += 14;
   }
 
-  if (
-    context.previousAssetPath && context.previousAssetPath === asset.assetPath
-  ) {
+  if (context.previousAssetPath && context.previousAssetPath === asset.assetPath) {
     score -= 1000;
   }
 
-  if (
-    context.previousCategoryPath &&
-    context.previousCategoryPath === asset.categoryPath
-  ) {
+  if (context.previousCategoryPath && context.previousCategoryPath === asset.categoryPath) {
     score -= 80;
   }
 
   const usedAssetCount = context.usedAssetCounts.get(asset.assetPath) ?? 0;
-  const usedCategoryCount =
-    context.usedCategoryCounts.get(asset.categoryPath) ?? 0;
+  const usedCategoryCount = context.usedCategoryCounts.get(asset.categoryPath) ?? 0;
 
   score -= usedAssetCount * 120;
   score -= usedCategoryCount * 20;
@@ -513,7 +324,7 @@ function scoreAssetForSegment(
     asset.categoryPath.startsWith("symbolic/") &&
     segment.type === "build" &&
     (segment.visualTags ?? []).some((tag) =>
-      ["thinking", "reflection", "pain", "loneliness", "peace"].includes(tag)
+      ["thinking", "reflection", "pain", "loneliness", "peace"].includes(tag),
     )
   ) {
     score += 8;
@@ -536,10 +347,17 @@ function chooseBestAsset(
     throw new Error("No quote reel video assets available");
   }
 
+  const allCategoryPaths = Array.from(
+    new Set(assets.map((item) => item.categoryPath).filter(Boolean)),
+  );
+
   const scored = shuffle(assets)
     .map((asset) => ({
       asset,
-      score: scoreAssetForSegment(asset, segment, context),
+      score: scoreAssetForSegment(asset, segment, {
+        ...context,
+        allCategoryPaths,
+      }),
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -574,10 +392,7 @@ export async function pickAssetsForQuoteReelSegments(
       usedCategoryCounts,
     });
 
-    usedAssetCounts.set(
-      selected.assetPath,
-      (usedAssetCounts.get(selected.assetPath) ?? 0) + 1,
-    );
+    usedAssetCounts.set(selected.assetPath, (usedAssetCounts.get(selected.assetPath) ?? 0) + 1);
     usedCategoryCounts.set(
       selected.categoryPath,
       (usedCategoryCounts.get(selected.categoryPath) ?? 0) + 1,

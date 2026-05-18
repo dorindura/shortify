@@ -15,27 +15,54 @@ const openai = new OpenAI({
 
 const ALLOWED_VISUAL_TAGS = [
   "alone",
+  "abandoned_places",
+  "addiction",
+  "alarm_snoozing",
   "anger",
   "anxiety",
   "arriving",
   "attention",
   "awkward",
+  "bedroom",
+  "betrayal",
+  "blocked",
   "bond",
+  "books",
+  "bridge",
+  "broken",
+  "broken_glass",
+  "cafe",
   "calm",
+  "candles",
+  "cemetery",
+  "censored",
   "chaos",
   "city_night",
+  "clock",
   "confidence",
   "curiosity",
   "dark",
+  "determination",
+  "disappointment",
+  "doors",
+  "drinking_coffee",
+  "driving",
   "duo",
   "emotional",
   "empathy",
+  "escaping",
   "faceless",
+  "fake",
+  "fight",
   "fire",
+  "forest",
   "forgiveness",
   "friendship",
+  "gym",
   "group",
+  "group_dynamics",
   "healing",
+  "helping",
   "hope",
   "ignoring",
   "included",
@@ -44,37 +71,63 @@ const ALLOWED_VISUAL_TAGS = [
   "kindness",
   "leaving",
   "listening",
+  "looking_down",
+  "looking_in_mirror",
   "loneliness",
   "love",
+  "mirror",
+  "money",
+  "mountains",
   "movement",
+  "negation",
   "nostalgia",
   "observing",
+  "office",
   "ocean",
+  "opening_door",
   "pain",
   "peace",
+  "phone",
   "protecting",
+  "proudness",
+  "public_transport",
   "rain",
   "reacting",
   "reflection",
   "regret",
+  "revealing",
   "resilience",
   "room",
+  "roads",
+  "running",
   "sadness",
+  "school",
+  "scrolling_phone",
   "self_respect",
   "shadows",
   "shock",
   "silhouette",
+  "sitting",
   "sky",
   "slow_motion",
+  "soldier",
   "stars",
+  "standing_still",
+  "staring",
+  "stepping",
   "stoic",
   "street",
   "strength",
   "sunrise",
   "sunset",
   "thinking",
+  "toxic",
+  "train",
+  "train_station",
   "walking",
   "window",
+  "working",
+  "writing",
 ] as const;
 
 type AllowedVisualTag = (typeof ALLOWED_VISUAL_TAGS)[number];
@@ -306,11 +359,31 @@ function inferVisualTagsFromText(
     items.forEach((item) => tags.add(item));
 
   if (/\b(anger|angry|mad|rage|furious|resentment|hate)\b/.test(lower)) {
-    add("anger", "intense", "chaos");
+    add("anger", "intense", "chaos", "fight");
+  }
+
+  if (/\b(addict|addiction|obsessed|dopamine|craving)\b/.test(lower)) {
+    add("addiction", "scrolling_phone", "phone");
+  }
+
+  if (/\b(toxic|manipulate|gaslight|poison|poisoned)\b/.test(lower)) {
+    add("toxic", "fake", "dark");
+  }
+
+  if (/\b(blocked|block|censored|silenced|muted)\b/.test(lower)) {
+    add("blocked", "negation", "censored");
   }
 
   if (/\b(pain|hurt|wound|broken|betray|disappointment|suffer)\b/.test(lower)) {
-    add("pain", "sadness", "rain");
+    add("pain", "sadness", "rain", "broken");
+  }
+
+  if (/\b(betray|betrayal|lied|fake friend|backstab)\b/.test(lower)) {
+    add("betrayal", "fake", "broken_glass");
+  }
+
+  if (/\b(disappoint|disappointment|let down)\b/.test(lower)) {
+    add("disappointment", "sadness", "looking_down");
   }
 
   if (/\b(forgive|forgiveness|peace|release|let go|healing)\b/.test(lower)) {
@@ -322,23 +395,31 @@ function inferVisualTagsFromText(
   }
 
   if (/\b(strength|strong|power|discipline|resilience|stoic)\b/.test(lower)) {
-    add("strength", "resilience", "stoic");
+    add("strength", "resilience", "stoic", "determination");
+  }
+
+  if (/\b(proud|pride|earned it|made it)\b/.test(lower)) {
+    add("proudness", "confidence", "strength");
   }
 
   if (/\b(think|thinking|understand|realize|mind|reflection)\b/.test(lower)) {
     add("thinking", "reflection", "observing");
   }
 
-  if (/\b(walk|walking|move on|keep going|journey)\b/.test(lower)) {
-    add("walking", "movement", "street");
+  if (/\b(walk|walking|move on|keep going|journey|run|running)\b/.test(lower)) {
+    add("walking", "movement", "street", "running");
   }
 
   if (/\b(love|kindness|heart|gentle|soft)\b/.test(lower)) {
-    add("kindness", "love", "empathy");
+    add("kindness", "love", "empathy", "helping");
   }
 
   if (/\b(crowd|people|group|everyone|most people)\b/.test(lower)) {
-    add("group", "observing");
+    add("group", "group_dynamics", "observing");
+  }
+
+  if (/\b(stare|staring|looked at|watching)\b/.test(lower)) {
+    add("staring", "observing");
   }
 
   if (/\b(night|dark|shadow|shadows)\b/.test(lower)) {
@@ -357,8 +438,56 @@ function inferVisualTagsFromText(
     add("window");
   }
 
-  if (/\b(room)\b/.test(lower)) {
+  if (/\b(room|bedroom|office|school|class|gym|cafe)\b/.test(lower)) {
+    if (/\bbedroom\b/.test(lower)) add("bedroom");
+    if (/\boffice|work|working\b/.test(lower)) add("office", "working");
+    if (/\bschool|class\b/.test(lower)) add("school");
+    if (/\bgym|training\b/.test(lower)) add("gym");
+    if (/\bcafe|coffee\b/.test(lower)) add("cafe", "drinking_coffee");
     add("room");
+  }
+
+  if (/\b(phone|scroll|scrolling|texting)\b/.test(lower)) {
+    add("phone", "scrolling_phone");
+  }
+
+  if (/\b(drive|driving|car|arrive|arriving|leave|leaving|door|bus|train|transport)\b/.test(lower)) {
+    if (/\b(drive|driving|car)\b/.test(lower)) add("driving");
+    if (/\b(arrive|arriving)\b/.test(lower)) add("arriving");
+    if (/\b(leave|leaving)\b/.test(lower)) add("leaving");
+    if (/\bdoor\b/.test(lower)) add("doors", "opening_door");
+    if (/\b(bus|transport)\b/.test(lower)) add("public_transport");
+  }
+
+  if (/\b(mirror|look at yourself|reflection)\b/.test(lower)) {
+    add("mirror", "looking_in_mirror");
+  }
+
+  if (/\b(book|books|write|writing|study|learn)\b/.test(lower)) {
+    if (/\b(book|books|study|learn)\b/.test(lower)) add("books");
+    if (/\b(write|writing)\b/.test(lower)) add("writing");
+  }
+
+  if (/\b(money|rich|wealth|price|cost)\b/.test(lower)) {
+    add("money");
+  }
+
+  if (/\b(forest|mountain|road|bridge|train|station|cemetery|grave)\b/.test(lower)) {
+    if (/\bforest\b/.test(lower)) add("forest");
+    if (/\bmountain\b/.test(lower)) add("mountains");
+    if (/\b(road|path)\b/.test(lower)) add("roads");
+    if (/\bbridge\b/.test(lower)) add("bridge");
+    if (/\btrain\b/.test(lower)) add("train", "train_station");
+    if (/\bstation\b/.test(lower)) add("train_station");
+    if (/\b(cemetery|grave)\b/.test(lower)) add("cemetery");
+  }
+
+  if (/\b(step|stepping)\b/.test(lower)) {
+    add("stepping", "movement");
+  }
+
+  if (/\b(alarm|snooze|woke up|wake up)\b/.test(lower)) {
+    add("alarm_snoozing", "clock");
   }
 
   if (tone === "dark") add("city_night", "shadows");
@@ -463,7 +592,7 @@ function normalizeAiSegments(
   }
 
   const rawSegments = input
-    .map((item, index, arr) => {
+    .map((item, index, arr): QuoteReelSegment | null => {
       const text = normalizeWhitespace(String(item?.text ?? ""));
       const voiceoverText = normalizeWhitespace(
         String(item?.voiceoverText ?? text),
@@ -484,7 +613,7 @@ function normalizeAiSegments(
           : inferVisualTagsFromText(text, tone),
       };
     })
-    .filter((item): item is QuoteReelSegment => !!item);
+    .filter((item): item is QuoteReelSegment => item !== null);
 
   if (!rawSegments.length) {
     return buildFallbackSegmentsFromText(fallbackText, tone, addCta);
