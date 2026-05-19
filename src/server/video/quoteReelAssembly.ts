@@ -12,9 +12,9 @@ const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
-// Inner cinematic video card (smaller, centered)
-const CARD_W = 900;
-const CARD_H = 640;
+// Full-width cinematic video card, centered vertically.
+const CARD_W = 1080;
+const CARD_H = 900;
 const CARD_RADIUS = 36;
 
 // Soft shadow offset
