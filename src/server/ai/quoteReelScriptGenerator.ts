@@ -177,12 +177,12 @@ type AiQuoteReelScriptResponse = {
 function estimateTargetSegmentCount(targetDurationSec: number) {
   const safeTarget = clamp(targetDurationSec || 70, 45, 180);
 
-  if (safeTarget <= 55) return 16;
-  if (safeTarget <= 70) return 20;
-  if (safeTarget <= 90) return 24;
-  if (safeTarget <= 120) return 30;
+  if (safeTarget <= 55) return 14;
+  if (safeTarget <= 70) return 18;
+  if (safeTarget <= 90) return 22;
+  if (safeTarget <= 120) return 28;
 
-  return 36;
+  return 34;
 }
 
 function splitSegmentTextForReel(text: string, maxWords = 10): string[] {
@@ -209,10 +209,10 @@ function densifySegments(
   const desiredCount = estimateTargetSegmentCount(targetDurationSec);
 
   const expanded = segments.flatMap((segment) => {
-    const textParts = splitSegmentTextForReel(segment.text, 10);
+    const textParts = splitSegmentTextForReel(segment.text, 14);
     const voiceParts = splitSegmentTextForReel(
       segment.voiceoverText || segment.text,
-      10,
+      14,
     );
 
     const partCount = Math.max(textParts.length, voiceParts.length, 1);
@@ -272,8 +272,14 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function stripScriptRoleLabels(value: string) {
+  return normalizeWhitespace(
+    value.replace(/\b(?:hook|setup|build|built|payoff|cta)\s*:\s*/gi, ""),
+  );
+}
+
 function splitIntoSentences(text: string): string[] {
-  const normalized = normalizeWhitespace(text);
+  const normalized = stripScriptRoleLabels(text);
   if (!normalized) return [];
 
   const matches = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [];
@@ -514,9 +520,9 @@ function buildFallbackSegmentsFromText(
   tone: QuoteReelTone,
   addCta = true,
 ): QuoteReelSegment[] {
-  const sentences = splitIntoSentences(text);
+  const sentences = splitIntoSentences(stripScriptRoleLabels(text));
   const microSegments = sentences.flatMap((sentence) =>
-    splitLongSentence(sentence, 10)
+    splitLongSentence(sentence, 14)
   );
 
   const filtered = microSegments
@@ -593,8 +599,8 @@ function normalizeAiSegments(
 
   const rawSegments = input
     .map((item, index, arr): QuoteReelSegment | null => {
-      const text = normalizeWhitespace(String(item?.text ?? ""));
-      const voiceoverText = normalizeWhitespace(
+      const text = stripScriptRoleLabels(String(item?.text ?? ""));
+      const voiceoverText = stripScriptRoleLabels(
         String(item?.voiceoverText ?? text),
       );
 
@@ -808,23 +814,40 @@ async function generateLongFormScriptFromPrompt(input: {
       {
         role: "system",
         content: `
-You create long-form vertical social media story scripts for reels and TikTok.
+You create viral vertical explainer scripts for reels and TikTok.
 
 Goals:
 - Write a script that usually supports at least 60 seconds of spoken narration.
-- Make it emotionally engaging and retention-friendly.
-- Break the script into MANY short segments.
-- Prefer around 18 to 30 segments for most 60 to 90 second reels.
-- Each segment should contain only one micro-idea.
-- Most segments should be 4 to 12 words on screen.
-- Frequent visual changes are critical.
+- Make it emotionally engaging, curiosity-driven, and retention-friendly.
+- Break the script into intentional short segments.
+- Prefer around 16 to 24 segments for most 60 to 90 second reels.
+- Each segment should contain one complete micro-idea, not a tiny fragment.
+- Most segments should be 5 to 12 words on screen.
+- Visual changes should feel directed and motivated, not like a random slideshow.
 - Do not return long paragraph-like segments.
 - The pacing should feel premium and cinematic, not robotic.
-- The user wants lots of visual changes, almost every idea getting a new visual.
+- The user wants premium retention pacing with enough time for each visual to land.
+
+Viral structure:
+- Open with a specific tension, not a generic quote.
+- The first 3 seconds must create a curiosity gap or unresolved problem.
+- Prefer formats like:
+  "If someone does X, try this."
+  "Most people miss this signal."
+  "There are 3 steps."
+  "This is the method nobody explains."
+- Give the concept a memorable name when useful, like "Red Shirt Method" or "The Mirror Test".
+- Use a clear arc: hook -> problem -> why it works -> step 1 -> step 2 -> step 3 -> payoff -> CTA.
+- Include at least 2 step/setup segments when the topic supports it.
+- Every 5 to 8 segments, add a mini-payoff, twist, or "but here's the catch" moment.
 
 Rules:
 - Return JSON only.
 - Do not include markdown.
+- Write in the same language as the user's topic or source text.
+- Never include segment labels in generatedText, finalScript, text, or voiceoverText.
+- Forbidden text prefixes: "hook:", "setup:", "build:", "built:", "payoff:", "cta:".
+- The "type" field is metadata only; it must never be spoken or shown as caption text.
 - Segment text should usually be short, clean, and readable on-screen.
 - voiceoverText can be slightly more natural than on-screen text, but should stay close.
 - Use only segment types from:
@@ -836,7 +859,10 @@ Text writing rules:
 - No emojis in the script.
 - No numbered lists.
 - Avoid generic fake guru phrases.
-- Make it sound human, reflective, viral and emotionally intelligent.
+- Make it sound human, direct, viral and emotionally intelligent.
+- Avoid vague lines like "life is hard", "be yourself", "protect your peace" unless they are tied to a concrete action.
+- Use second person often.
+- Make captions feel like someone is revealing a useful social or psychological pattern.
 - If addCta is false, do not add CTA.
 - If addCta is true, CTA should be subtle and short.
 
@@ -880,7 +906,7 @@ Desired segment count: around ${
           estimateTargetSegmentCount(input.targetDurationSec)
         }
 
-Create a long-form story-driven reel script.
+Create a viral explainer reel script with a strong hook, a named method or clear steps, and a payoff.
 `,
       },
     ],
@@ -914,13 +940,15 @@ async function enrichManualTextIntoPlan(input: {
       {
         role: "system",
         content: `
-You transform user-provided long-form reflective text into a segmented short-video plan.
+You transform user-provided text into a segmented viral explainer video plan.
 
 Goals:
 - Preserve the meaning and emotional core of the user's text.
-- Do NOT rewrite it heavily unless necessary for flow.
+- Rewrite lightly when needed so the output has a stronger hook, clearer stakes, and a better payoff.
 - Break it into many short segments for frequent visual changes.
 - Keep the script natural for voice-over.
+- Turn abstract reflection into concrete social/psychological observations where possible.
+- Prefer a structure with hook, problem, method/steps, payoff and a subtle CTA.
 - Use only segment types from:
   hook, setup, build, payoff, cta
 - Use only visual tags from this allowed list:
@@ -928,15 +956,22 @@ ${ALLOWED_VISUAL_TAGS.join(", ")}
 
 Rules:
 - Return JSON only.
+- Write in the same language as the source text.
+- Never include segment labels in generatedText, finalScript, text, or voiceoverText.
+- Forbidden text prefixes: "hook:", "setup:", "build:", "built:", "payoff:", "cta:".
+- The "type" field is metadata only; it must never be spoken or shown as caption text.
 - Do not add fake quotes.
 - Preserve the user's voice as much as possible.
 - If the source text is too short for the target duration, lightly expand it with a short intro/payoff/CTA if needed.
 - If addCta is false, do not include CTA.
 - If addCta is true, keep CTA subtle.
-- Break the text into many short micro-segments.
-- Prefer around 18 to 30 segments for a 60 to 90 second reel.
+- Break the text into intentional short micro-scenes.
+- Prefer around 16 to 24 segments for a 60 to 90 second reel.
 - Most on-screen text segments should stay short.
-- Frequent visual changes are mandatory.
+- Visual changes should be frequent enough for retention, but coherent enough to feel edited.
+- The first segment must be a strong hook, not an intro.
+- Add a named method/test/framework when it naturally fits the text.
+- Avoid vague standalone fragments that lose context.
 
 Output JSON shape:
 {
@@ -1016,7 +1051,7 @@ export async function generateQuoteReelScriptPlan(
       });
 
       const finalScript =
-        normalizeWhitespace(ai.finalScript || ai.generatedText || sourceText) ||
+        stripScriptRoleLabels(ai.finalScript || ai.generatedText || sourceText) ||
         sourceText;
       const baseSegments = normalizeAiSegments(
         ai.segments,
@@ -1035,7 +1070,7 @@ export async function generateQuoteReelScriptPlan(
       return {
         sourceMode: "manual_text",
         sourceText,
-        generatedText: normalizeWhitespace(ai.generatedText || "") ||
+        generatedText: stripScriptRoleLabels(ai.generatedText || "") ||
           (finalScript !== sourceText ? finalScript : undefined),
         finalScript,
         segments,
@@ -1094,8 +1129,8 @@ export async function generateQuoteReelScriptPlan(
     addCta,
   });
 
-  const generatedText = normalizeWhitespace(ai.generatedText || "");
-  const finalScript = normalizeWhitespace(ai.finalScript || generatedText);
+  const generatedText = stripScriptRoleLabels(ai.generatedText || "");
+  const finalScript = stripScriptRoleLabels(ai.finalScript || generatedText);
 
   if (!finalScript) {
     throw new Error("AI text mode returned no finalScript");

@@ -97,7 +97,7 @@ function isQuoteReelVoicePreset(value: unknown): value is QuoteReelVoicePreset {
 function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
   const value = process.env.QUOTE_REEL_CAPTION_PRESET?.trim();
 
-  return isQuoteReelCaptionPreset(value) ? value : "card_bottom_karaoke";
+  return isQuoteReelCaptionPreset(value) ? value : "card_bottom_premium_karaoke";
 }
 
 export async function processQuoteReelJob(jobId: string) {
@@ -288,6 +288,7 @@ export async function processQuoteReelJob(jobId: string) {
 
     const assetPicks = await pickAssetsForQuoteReelSegments({
       segments: scriptPlan.segments,
+      tone,
     });
 
     await dbUpdateJobQuoteMeta(jobId, {
@@ -365,6 +366,7 @@ export async function processQuoteReelJob(jobId: string) {
         style: captionStyle,
         captionsEnabled: true,
         fadeOutSec: 1.5,
+        normalizeAudio: true,
         qualityPreset: "premium",
       });
 

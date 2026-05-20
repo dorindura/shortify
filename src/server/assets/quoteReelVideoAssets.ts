@@ -1,7 +1,7 @@
 // src/server/assets/quoteReelVideoAssets.ts
 import fs from "fs/promises";
 import path from "path";
-import type { QuoteReelAssetPick, QuoteReelSegment } from "@lib/jobsStore";
+import type { QuoteReelAssetPick, QuoteReelSegment, QuoteReelTone } from "@lib/jobsStore";
 
 const VIDEO_ROOT = path.join(process.cwd(), "public", "assets", "videos");
 
@@ -16,6 +16,7 @@ export type QuoteReelVideoAsset = {
 
 type PickAssetsInput = {
   segments: QuoteReelSegment[];
+  tone?: QuoteReelTone;
 };
 
 const CATEGORY_TOKEN_ALIASES: Record<string, string[]> = {
@@ -112,6 +113,34 @@ function toCategoryPath(absPath: string): string {
 
   if (parts.length <= 1) return "";
   return parts.slice(0, -1).join("/");
+}
+
+function getTopLevelFamily(categoryPath: string): string {
+  return normalizeWhitespace(categoryPath).split("/")[0] || "";
+}
+
+function isDarkPremiumCategory(categoryPath: string): boolean {
+  return /(^|\/)(shadows|silhouettes|city_night|staring|thinking|alone|window|rain|broken_glass|anxiety|sadness|toxic|faceless)(\/|$)/.test(
+    categoryPath,
+  );
+}
+
+function isBrightOrComedicCategory(categoryPath: string): boolean {
+  return /(^|\/)(friendship|kindness|love|peace|sunrise|sky|calm|awkward_moments)(\/|$)/.test(
+    categoryPath,
+  );
+}
+
+function preferredFamiliesForTone(tone?: QuoteReelTone): string[] {
+  if (tone === "aggressive") {
+    return ["energy", "hooks", "characters", "symbolic"];
+  }
+
+  if (tone === "calm" || tone === "emotional") {
+    return ["emotions", "symbolic", "characters", "social_situations"];
+  }
+
+  return ["hooks", "symbolic", "characters", "emotions"];
 }
 
 export async function listQuoteReelVideoAssets(): Promise<QuoteReelVideoAsset[]> {
@@ -274,14 +303,36 @@ function scoreAssetForSegment(
     usedAssetCounts: Map<string, number>;
     usedCategoryCounts: Map<string, number>;
     allCategoryPaths: string[];
+    tone?: QuoteReelTone;
+    segmentIndex: number;
   },
 ): number {
   let score = 0;
   const desiredCategories = getCandidateCategoriesForSegment(segment, context.allCategoryPaths);
+  const family = getTopLevelFamily(asset.categoryPath);
+  const previousFamily = context.previousCategoryPath
+    ? getTopLevelFamily(context.previousCategoryPath)
+    : "";
+  const preferredFamilyIndex = preferredFamiliesForTone(context.tone).indexOf(family);
 
   const categoryIndex = desiredCategories.findIndex((category) => category === asset.categoryPath);
   if (categoryIndex >= 0) {
     score += Math.max(120 - categoryIndex * 7, 25);
+  }
+
+  if (preferredFamilyIndex >= 0) {
+    score += Math.max(34 - preferredFamilyIndex * 7, 8);
+  }
+
+  if (previousFamily && previousFamily === family) {
+    score += 22;
+  } else if (previousFamily && context.segmentIndex % 3 !== 0) {
+    score -= 28;
+  }
+
+  if (context.tone === "dark" || context.tone === "stoic" || context.tone === "cinematic") {
+    if (isDarkPremiumCategory(asset.categoryPath)) score += 26;
+    if (isBrightOrComedicCategory(asset.categoryPath) && segment.type !== "payoff") score -= 18;
   }
 
   for (const tag of segment.visualTags ?? []) {
@@ -307,7 +358,7 @@ function scoreAssetForSegment(
   }
 
   if (context.previousCategoryPath && context.previousCategoryPath === asset.categoryPath) {
-    score -= 80;
+    score -= 22;
   }
 
   const usedAssetCount = context.usedAssetCounts.get(asset.assetPath) ?? 0;
@@ -341,6 +392,8 @@ function chooseBestAsset(
     previousCategoryPath?: string | null;
     usedAssetCounts: Map<string, number>;
     usedCategoryCounts: Map<string, number>;
+    tone?: QuoteReelTone;
+    segmentIndex: number;
   },
 ): QuoteReelVideoAsset {
   if (!assets.length) {
@@ -367,7 +420,7 @@ function chooseBestAsset(
 export async function pickAssetsForQuoteReelSegments(
   input: PickAssetsInput,
 ): Promise<QuoteReelAssetPick[]> {
-  const { segments } = input;
+  const { segments, tone } = input;
 
   if (!segments.length) return [];
 
@@ -384,12 +437,14 @@ export async function pickAssetsForQuoteReelSegments(
   let previousAssetPath: string | null = null;
   let previousCategoryPath: string | null = null;
 
-  for (const segment of segments) {
+  for (const [segmentIndex, segment] of segments.entries()) {
     const selected = chooseBestAsset(assets, segment, {
       previousAssetPath,
       previousCategoryPath,
       usedAssetCounts,
       usedCategoryCounts,
+      tone,
+      segmentIndex,
     });
 
     usedAssetCounts.set(selected.assetPath, (usedAssetCounts.get(selected.assetPath) ?? 0) + 1);

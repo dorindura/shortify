@@ -62,7 +62,7 @@ function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
 
   return ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(value as QuoteReelCaptionPreset)
     ? (value as QuoteReelCaptionPreset)
-    : "card_bottom_karaoke";
+    : "card_bottom_premium_karaoke";
 }
 
 export async function registerQuoteReelRoute(app: FastifyInstance) {

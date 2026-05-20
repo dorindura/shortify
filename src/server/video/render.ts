@@ -39,6 +39,7 @@ type RenderOptions = {
   blackAndWhite?: boolean;
   qualityPreset?: RenderQualityPreset;
   fadeOutSec?: number;
+  normalizeAudio?: boolean;
 };
 
 async function ensureDir(dir: string) {
@@ -455,6 +456,11 @@ export async function renderShortsWithSubtitles(
       baseFilters.push(fadeFilters.video);
     }
 
+    const audioFilters = [
+      opts?.normalizeAudio ? "loudnorm=I=-16:TP=-1.5:LRA=11" : null,
+      fadeFilters.audio,
+    ].filter((filter): filter is string => !!filter);
+
     const overlaysForClip = (opts?.textOverlays ?? []).filter(
       (overlay) => overlay.clipIndex === i,
     );
@@ -494,7 +500,7 @@ export async function renderShortsWithSubtitles(
       "aac",
       "-b:a",
       opts?.qualityPreset === "premium" ? "192k" : "128k",
-      ...(fadeFilters.audio ? ["-af", fadeFilters.audio] : []),
+      ...(audioFilters.length ? ["-af", audioFilters.join(",")] : []),
       "-threads",
       ffThreads,
       "-movflags",

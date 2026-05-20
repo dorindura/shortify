@@ -20,7 +20,9 @@ export type LocalQuoteVoicePreset =
 export type LocalQuoteCaptionPreset =
   | "card_bottom_karaoke"
   | "card_center_word_by_word"
-  | "card_center_progressive_words";
+  | "card_center_progressive_words"
+  | "card_center_premium_word"
+  | "card_bottom_premium_karaoke";
 
 export type CustomClipRange = {
   id: string;

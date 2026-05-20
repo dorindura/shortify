@@ -244,16 +244,16 @@ export default function QuoteReelSection({
           <button
             type="button"
             disabled={!captionsEnabled}
-            onClick={() => setQuoteCaptionPreset("card_bottom_karaoke")}
+            onClick={() => setQuoteCaptionPreset("card_bottom_premium_karaoke")}
             className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
-              quoteCaptionPreset === "card_bottom_karaoke"
+              quoteCaptionPreset === "card_bottom_premium_karaoke"
                 ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
                 : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
             }`}
           >
-            <div className="font-semibold">Bottom karaoke</div>
+            <div className="font-semibold">Premium bottom</div>
             <div className="mt-1 text-[11px] text-slate-400">
-              Caption line near the bottom of the centered video card.
+              Clean lower captions tuned for the cinematic video card.
             </div>
           </button>
 
@@ -269,7 +269,7 @@ export default function QuoteReelSection({
           >
             <div className="font-semibold">Center word-by-word</div>
             <div className="mt-1 text-[11px] text-slate-400">
-              One word at a time in the center of the video card.
+              One word at a time in the center of the reel.
             </div>
           </button>
 
@@ -285,7 +285,7 @@ export default function QuoteReelSection({
           >
             <div className="font-semibold">Center progressive words</div>
             <div className="mt-1 text-[11px] text-slate-400">
-              Words displayed progressively in the center of the video card.
+              Words displayed progressively in the center of the reel.
             </div>
           </button>
         </div>

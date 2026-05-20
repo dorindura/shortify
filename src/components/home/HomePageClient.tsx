@@ -81,7 +81,7 @@ export default function HomePageClient() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
   const [quoteCaptionPreset, setQuoteCaptionPreset] =
-    useState<LocalQuoteCaptionPreset>("card_bottom_karaoke");
+    useState<LocalQuoteCaptionPreset>("card_bottom_premium_karaoke");
   const [targetDurationSec, setTargetDurationSec] = useState(70);
   const [minDurationSec, setMinDurationSec] = useState(60);
   const [maxDurationSec, setMaxDurationSec] = useState(95);

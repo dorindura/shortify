@@ -12,14 +12,10 @@ const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
-// Full-width cinematic video card, centered vertically.
-const CARD_W = 1080;
+// Full-width cinematic video card, centered vertically over a mirrored background.
+const CARD_W = 960;
 const CARD_H = 900;
 const CARD_RADIUS = 36;
-
-// Soft shadow offset
-const SHADOW_X = 0;
-const SHADOW_Y = 18;
 
 type PreparedSegment = {
   segmentId: string;
@@ -27,6 +23,7 @@ type PreparedSegment = {
   assetPath: string;
   preparedPath: string;
   durationSec: number;
+  timelineStartSec: number;
 };
 
 export type AssembleQuoteReelInput = {
@@ -135,12 +132,11 @@ function getCardVideoBaseFilters(aspect: JobAspect): string[] {
     ];
   }
 
-  // Main desired look for quote reel:
-  // keep a vertical crop, but not fullscreen; it sits inside a centered card
   return [
-    `scale=${CARD_W}:${CARD_H}:force_original_aspect_ratio=increase:flags=bicubic`,
+    `scale=${CARD_W}:${CARD_H}:force_original_aspect_ratio=increase:flags=lanczos`,
     `crop=${CARD_W}:${CARD_H}`,
     "fps=30",
+    "setsar=1",
     "format=yuv420p",
   ];
 }
@@ -177,8 +173,8 @@ function getSegmentTargetDurations(
       .split(" ")
       .filter(Boolean).length;
 
-    const minDur = segment.type === "hook" ? 2.8 : 2.2;
-    const maxDur = words >= 16 ? 5.8 : 4.6;
+    const minDur = segment.type === "hook" ? 1.55 : 1.25;
+    const maxDur = words >= 16 ? 4.2 : 3.25;
 
     return clamp(value, minDur, maxDur);
   });
@@ -190,15 +186,23 @@ function getSegmentTargetDurations(
   }
 
   const scale = normalizedTarget / clampedTotal;
-  return clamped.map((value) => clamp(value * scale, 2.2, 6.5));
+  return clamped.map((value) => clamp(value * scale, 1.25, 4.8));
 }
 
 function buildCinematicCanvasFilter(aspect: JobAspect): string {
   const base = getCardVideoBaseFilters(aspect).join(",");
+  const backgroundBase = [
+    `scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=increase:flags=bicubic`,
+    `crop=${CANVAS_W}:${CANVAS_H}`,
+    "boxblur=24:2",
+    "eq=brightness=-0.18:saturation=0.75",
+    "format=rgba",
+  ].join(",");
 
   return [
-    `color=c=black:s=${CANVAS_W}x${CANVAS_H}:r=30[bg]`,
-    `[0:v]${base},format=rgba[vidraw]`,
+    `[0:v]split=2[bgsrc][cardsrc]`,
+    `[bgsrc]${backgroundBase}[bg]`,
+    `[cardsrc]${base},eq=brightness=-0.035:contrast=1.07:saturation=0.9,unsharp=5:5:0.35:3:3:0.14,format=rgba[vidraw]`,
 
     // rounded rectangle alpha mask
     `nullsrc=s=${CARD_W}x${CARD_H},format=gray,geq=` +
@@ -223,14 +227,7 @@ function buildCinematicCanvasFilter(aspect: JobAspect): string {
 
     `[vidraw][mask]alphamerge[vidrounded]`,
 
-    // shadow
-    `[vidrounded]split=2[vidmain][vidshadowbase]`,
-    `[vidshadowbase]alphaextract,boxblur=28:12[shadowalpha]`,
-    `color=c=black@0.42:s=${CARD_W}x${CARD_H}:r=30,format=rgba[shadowbase]`,
-    `[shadowbase][shadowalpha]alphamerge[shadow]`,
-
-    `[bg][shadow]overlay=(W-${CARD_W})/2+${SHADOW_X}:(H-${CARD_H})/2+${SHADOW_Y}[bgshadow]`,
-    `[bgshadow][vidmain]overlay=(W-${CARD_W})/2:(H-${CARD_H})/2[vout]`,
+    `[bg][vidrounded]overlay=(W-${CARD_W})/2:(H-${CARD_H})/2,setsar=1,format=yuv420p[vout]`,
   ].join(";");
 }
 
@@ -241,7 +238,7 @@ async function cutAndNormalizeSegmentClip(opts: {
   durationSec: number;
   aspect: JobAspect;
 }): Promise<void> {
-  const { inputPath, outputPath, startSec, durationSec, aspect } = opts;
+  const { inputPath, startSec, durationSec, aspect } = opts;
 
   const filterComplex = buildCinematicCanvasFilter(aspect);
 
@@ -257,8 +254,6 @@ async function cutAndNormalizeSegmentClip(opts: {
     filterComplex,
     "-map",
     "[vout]",
-    "-map",
-    "0:a?",
     "-r",
     "30",
     "-c:v",
@@ -273,19 +268,11 @@ async function cutAndNormalizeSegmentClip(opts: {
     "16M",
     "-pix_fmt",
     "yuv420p",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "192k",
-    "-ar",
-    "48000",
-    "-ac",
-    "2",
     "-movflags",
     "+faststart",
     "-threads",
     ffThreads,
-    outputPath,
+    opts.outputPath,
   ];
 
   await runCmd("ffmpeg", args, "quoteReelAssembly:cutAndNormalizeSegmentClip");
@@ -371,7 +358,9 @@ async function attachVoiceoverToVideo(opts: {
     "-c:a",
     "aac",
     "-b:a",
-    "160k",
+    "192k",
+    "-af",
+    "loudnorm=I=-16:TP=-1.5:LRA=11",
     "-shortest",
     "-movflags",
     "+faststart",
@@ -450,6 +439,7 @@ export async function assembleQuoteReel(
 
   try {
     const assetBySegmentId = buildSegmentAssetMap(assetPicks);
+    let timelineCursorSec = 0;
 
     const targetDurationSec =
       typeof input.targetDurationSec === "number" && input.targetDurationSec > 0
@@ -477,9 +467,10 @@ export async function assembleQuoteReel(
         1.25,
         Math.max(1.25, assetDuration),
       );
+      const preparedDuration = Math.min(segmentDuration, assetDuration);
       const startSec = chooseClipStart(
         assetDuration,
-        Math.min(segmentDuration, assetDuration),
+        preparedDuration,
         i,
       );
 
@@ -492,7 +483,7 @@ export async function assembleQuoteReel(
         inputPath: assetPick.assetPath,
         outputPath: preparedPath,
         startSec,
-        durationSec: Math.min(segmentDuration, assetDuration),
+        durationSec: preparedDuration,
         aspect,
       });
 
@@ -501,8 +492,11 @@ export async function assembleQuoteReel(
         text: segment.text,
         assetPath: assetPick.assetPath,
         preparedPath,
-        durationSec: Math.min(segmentDuration, assetDuration),
+        durationSec: preparedDuration,
+        timelineStartSec: timelineCursorSec,
       });
+
+      timelineCursorSec += preparedDuration;
     }
 
     await concatPreparedSegments({
