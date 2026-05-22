@@ -23,6 +23,7 @@ import type {
 import { buildCustomRangesPayload, buildMultiSourceSegmentsPayload } from "./home.utils";
 import JobReviewPanel from "@/components/home/review/JobReviewPanel";
 import MultiSourceReviewPanel from "@/components/home/review/MultiSourceReviewPanel";
+import QuoteReelScriptReviewPanel from "@/components/home/review/QuoteReelScriptReviewPanel";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const supabase = supabaseBrowser();
@@ -129,6 +130,14 @@ export default function HomePageClient() {
   ).length;
 
   const reviewJob = jobs.find((job) => job.id === reviewJobId) ?? null;
+  const reviewJobHasQuoteReelScript =
+    (reviewJob?.quoteReelMeta?.finalScript ?? "").trim().length >= 20;
+  const isQuoteReelScriptReviewJob =
+    reviewJob?.jobGoal === "quote_reel" &&
+    (reviewJob.reviewReady ||
+      (reviewJob.status === "pending" &&
+        reviewJob.stage === "queued" &&
+        reviewJobHasQuoteReelScript));
 
   function createEmptyCustomClip(): CustomRange {
     return {
@@ -798,6 +807,17 @@ export default function HomePageClient() {
 
       {reviewJob && reviewJob.jobGoal === "multi_source_edit" && reviewJob.reviewReady && (
         <MultiSourceReviewPanel
+          job={reviewJob}
+          apiBaseUrl={API}
+          authedJsonFetch={authedJsonFetch}
+          onClose={() => setReviewJobId(null)}
+          onSaved={fetchJobs}
+          onRendered={fetchJobs}
+        />
+      )}
+
+      {reviewJob && isQuoteReelScriptReviewJob && (
+        <QuoteReelScriptReviewPanel
           job={reviewJob}
           apiBaseUrl={API}
           authedJsonFetch={authedJsonFetch}

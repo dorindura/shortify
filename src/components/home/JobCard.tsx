@@ -29,7 +29,15 @@ export default function JobCard({
   const isFailed = job.status === "failed";
   const isShortsReviewStep = job.jobGoal === "shorts" && job.reviewReady;
   const isMultiSourceReviewStep = job.jobGoal === "multi_source_edit" && job.reviewReady;
-  const isReviewStep = isShortsReviewStep || isMultiSourceReviewStep;
+  const hasQuoteReelScript = (job.quoteReelMeta?.finalScript ?? "").trim().length >= 20;
+  const isRecoverableQuoteReelRender =
+    job.jobGoal === "quote_reel" &&
+    job.status === "pending" &&
+    job.stage === "queued" &&
+    hasQuoteReelScript;
+  const isQuoteReelScriptReviewStep =
+    job.jobGoal === "quote_reel" && (job.reviewReady || isRecoverableQuoteReelRender);
+  const isReviewStep = isShortsReviewStep || isMultiSourceReviewStep || isQuoteReelScriptReviewStep;
 
   return (
     <div className="rounded-xl border border-slate-800/90 bg-slate-950/90 p-3 text-xs shadow-sm shadow-black/40">
@@ -48,9 +56,18 @@ export default function JobCard({
                       : "bg-rose-500/10 text-rose-400"
               }`}
             >
-              {isPending && "⏳ PENDING"}
+              {isRecoverableQuoteReelRender && "📝 RESUME RENDER"}
+              {isPending && !isRecoverableQuoteReelRender && "⏳ PENDING"}
               {isProcessing && "⚙️ PROCESSING"}
-              {!isPending && !isProcessing && isReviewStep && "📝 READY FOR REVIEW"}
+              {!isPending &&
+                !isProcessing &&
+                isQuoteReelScriptReviewStep &&
+                (isRecoverableQuoteReelRender ? "📝 RESUME RENDER" : "📝 SCRIPT REVIEW")}
+              {!isPending &&
+                !isProcessing &&
+                !isQuoteReelScriptReviewStep &&
+                isReviewStep &&
+                "📝 READY FOR REVIEW"}
               {isDone && !isReviewStep && "✅ DONE"}
               {isFailed && "⚠️ FAILED"}
               {!isPending && !isProcessing && !isDone && !isFailed && job.status.toUpperCase()}
@@ -64,16 +81,19 @@ export default function JobCard({
                 {deletingJobs[job.id] ? "Deleting..." : "Delete"}
               </button>
             )}
-            {(job.jobGoal === "shorts" || job.jobGoal === "multi_source_edit") &&
-              job.reviewReady && (
-                <button
-                  type="button"
-                  onClick={() => openReview(job)}
-                  className="rounded-full border border-emerald-500/60 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
-                >
-                  Open Review
-                </button>
-              )}
+            {isReviewStep && (
+              <button
+                type="button"
+                onClick={() => openReview(job)}
+                className="rounded-full border border-emerald-500/60 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
+              >
+                {isRecoverableQuoteReelRender
+                  ? "Resume Render"
+                  : isQuoteReelScriptReviewStep
+                    ? "Edit Script"
+                    : "Open Review"}
+              </button>
+            )}
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-400">
@@ -250,6 +270,12 @@ export default function JobCard({
       {job.jobGoal === "multi_source_edit" && job.reviewReady && (
         <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] text-cyan-200">
           This multi-source edit is ready for final timeline review before final render.
+        </div>
+      )}
+
+      {job.jobGoal === "quote_reel" && job.reviewReady && (
+        <div className="mt-3 rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-[10px] text-fuchsia-100">
+          This Quote Reel is waiting for script edits before voiceover and final render.
         </div>
       )}
 

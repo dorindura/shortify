@@ -3,13 +3,17 @@ import {
   dbGetJob,
   dbSetJobCaptionDrafts,
   dbSetJobCaptionedResults,
+  dbSetJobReviewReady,
   dbUpdateJobQuoteMeta,
   dbUpdateJobStage,
   dbUpdateJobStatus,
 } from "@/server/jobs/jobsDb";
 import { uploadLocalFileToStorage } from "@/server/storage/upload";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
-import { generateQuoteReelScriptPlan } from "@/server/ai/quoteReelScriptGenerator";
+import {
+  buildQuoteReelPlanFromFinalScript,
+  generateQuoteReelScriptPlan,
+} from "@/server/ai/quoteReelScriptGenerator";
 import { pickAssetsForQuoteReelSegments } from "@/server/assets/quoteReelVideoAssets";
 import { generateVoiceoverFromText } from "@/server/ai/elevenLabsVoiceover";
 import { assembleQuoteReel } from "@/server/video/quoteReelAssembly";
@@ -185,16 +189,35 @@ export async function processQuoteReelJob(jobId: string) {
 
     await dbUpdateJobStage(jobId, "script_generation", 18);
 
-    const scriptPlan = await generateQuoteReelScriptPlan({
-      mode,
-      tone,
-      text: mode === "manual_text" ? sourceText : undefined,
-      prompt: mode === "ai_text" ? prompt : undefined,
-      targetDurationSec,
-      minDurationSec,
-      maxDurationSec,
-      addCta: true,
-    });
+    const scriptReviewRequired = existingMeta.scriptReviewRequired !== false;
+    const scriptReviewApproved = existingMeta.scriptReviewApproved === true;
+
+    const scriptPlan =
+      scriptReviewApproved && typeof existingMeta.finalScript === "string"
+        ? buildQuoteReelPlanFromFinalScript({
+            finalScript: existingMeta.finalScript,
+            tone,
+            targetDurationSec,
+            minDurationSec,
+            maxDurationSec,
+            addCta: true,
+            sourceMode: mode,
+            sourceText: existingMeta.sourceText,
+            generatedText: existingMeta.generatedText,
+            instagramCaption: existingMeta.instagramCaption,
+            hashtags: existingMeta.hashtags,
+            musicSuggestions: existingMeta.musicSuggestions,
+          })
+        : await generateQuoteReelScriptPlan({
+            mode,
+            tone,
+            text: mode === "manual_text" ? sourceText : undefined,
+            prompt: mode === "ai_text" ? prompt : undefined,
+            targetDurationSec,
+            minDurationSec,
+            maxDurationSec,
+            addCta: true,
+          });
 
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
@@ -203,6 +226,10 @@ export async function processQuoteReelJob(jobId: string) {
       sourceText: scriptPlan.sourceText,
       generatedText: scriptPlan.generatedText,
       finalScript: scriptPlan.finalScript,
+      originalFinalScript: existingMeta.originalFinalScript ?? scriptPlan.finalScript,
+      scriptReviewRequired,
+      scriptReviewApproved,
+      scriptEdited: existingMeta.scriptEdited ?? false,
       targetDurationSec,
       minDurationSec,
       maxDurationSec,
@@ -222,6 +249,15 @@ export async function processQuoteReelJob(jobId: string) {
       musicSuggestions: scriptPlan.musicSuggestions,
       selectedAssets: [],
     });
+
+    if (scriptReviewRequired && !scriptReviewApproved) {
+      await dbSetJobReviewReady(jobId, true);
+      await dbUpdateJobStage(jobId, "review_ready", 100);
+      await dbUpdateJobStatus(jobId, "done");
+      return;
+    }
+
+    await dbSetJobReviewReady(jobId, false);
 
     let voiceoverAudioPath: string | undefined;
     let actualTargetDurationSec = targetDurationSec;

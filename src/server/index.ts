@@ -19,6 +19,7 @@ async function main() {
   const { registerDownloadRoute } = await import("./routes/download");
   const { registerAdminRoutes } = await import("./routes/admin");
   const { registerQuoteReelRoute } = await import("./routes/quoteReel");
+  const { registerQuoteReelReviewRoute } = await import("./routes/quoteReelReview");
   const { registerJobReviewRoute } = await import("./routes/review");
   const { registerJobRenderRoute } = await import("./routes/render");
   const { registerJobClipPreviewRoute } = await import("./routes/jobClipPreview");
@@ -61,6 +62,7 @@ async function main() {
   await registerDownloadRoute(app);
   await registerAdminRoutes(app);
   await registerQuoteReelRoute(app);
+  await registerQuoteReelReviewRoute(app);
   await registerJobReviewRoute(app);
   await registerJobRenderRoute(app);
   await registerJobClipPreviewRoute(app);

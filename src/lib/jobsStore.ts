@@ -134,6 +134,10 @@ export type QuoteReelMeta = {
   sourceText?: string;
   generatedText?: string;
   finalScript?: string;
+  scriptReviewRequired?: boolean;
+  scriptReviewApproved?: boolean;
+  scriptEdited?: boolean;
+  originalFinalScript?: string;
 
   targetDurationSec?: number;
   minDurationSec?: number;

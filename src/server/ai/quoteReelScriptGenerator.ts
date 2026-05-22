@@ -1166,3 +1166,46 @@ export async function generateQuoteReelScriptPlan(
       : defaultMusicSuggestionsForTone(input.tone),
   };
 }
+
+export function buildQuoteReelPlanFromFinalScript(input: {
+  finalScript: string;
+  tone: QuoteReelTone;
+  targetDurationSec?: number;
+  minDurationSec?: number;
+  maxDurationSec?: number;
+  addCta?: boolean;
+  sourceMode?: QuoteReelMode;
+  sourceText?: string;
+  generatedText?: string;
+  instagramCaption?: string;
+  hashtags?: string[];
+  musicSuggestions?: QuoteReelMusicSuggestion[];
+}): QuoteReelScriptPlan {
+  const finalScript = stripScriptRoleLabels(input.finalScript);
+  if (!finalScript) {
+    throw new Error("finalScript is required");
+  }
+
+  const targetDurationSec = clamp(input.targetDurationSec ?? 70, 45, 180);
+  const addCta = input.addCta ?? true;
+  const fallbackBaseSegments = buildFallbackSegmentsFromText(finalScript, input.tone, addCta);
+  const segments = densifySegments(fallbackBaseSegments, input.tone, targetDurationSec, addCta);
+  const hashtags = normalizeHashtags(input.hashtags).length
+    ? normalizeHashtags(input.hashtags)
+    : defaultHashtagsForTone(input.tone);
+  const musicSuggestions = normalizeMusicSuggestions(input.musicSuggestions).length
+    ? normalizeMusicSuggestions(input.musicSuggestions)
+    : defaultMusicSuggestionsForTone(input.tone);
+
+  return {
+    sourceMode: input.sourceMode ?? "manual_text",
+    sourceText: input.sourceText,
+    generatedText: input.generatedText,
+    finalScript,
+    segments,
+    instagramCaption: normalizeWhitespace(input.instagramCaption || "") ||
+      buildManualCaption(finalScript, input.tone),
+    hashtags,
+    musicSuggestions,
+  };
+}
