@@ -40,6 +40,7 @@ const ALLOWED_VISUAL_TAGS = [
   "city_night",
   "clock",
   "confidence",
+  "conflict",
   "curiosity",
   "dark",
   "determination",
@@ -71,10 +72,13 @@ const ALLOWED_VISUAL_TAGS = [
   "kindness",
   "leaving",
   "listening",
+  "loneliness_in_crowd",
   "looking_down",
   "looking_in_mirror",
   "loneliness",
   "love",
+  "manipulation",
+  "masks",
   "mirror",
   "money",
   "mountains",
@@ -94,6 +98,8 @@ const ALLOWED_VISUAL_TAGS = [
   "rain",
   "reacting",
   "reflection",
+  "rejection",
+  "red_flag",
   "regret",
   "revealing",
   "resilience",
@@ -106,6 +112,7 @@ const ALLOWED_VISUAL_TAGS = [
   "self_respect",
   "shadows",
   "shock",
+  "shame",
   "silhouette",
   "sitting",
   "sky",
@@ -124,9 +131,13 @@ const ALLOWED_VISUAL_TAGS = [
   "toxic",
   "train",
   "train_station",
+  "transformation",
   "walking",
   "window",
   "working",
+  "text_message",
+  "text_messages",
+  "overthinking",
   "writing",
 ] as const;
 
@@ -253,15 +264,22 @@ function densifySegments(
     finalSegments = buildFallbackSegmentsFromText(mergedText, tone, addCta);
   }
 
-  return finalSegments.map((segment, index, arr) => ({
-    ...segment,
-    id: segment.id || randomUUID(),
-    index,
-    type: sanitizeSegmentType(segment.type, index, arr.length),
-    visualTags: segment.visualTags?.length
-      ? segment.visualTags.slice(0, 4)
-      : inferVisualTagsFromText(segment.text, tone),
-  }));
+  return finalSegments.map((segment, index, arr) => {
+    const visualTags =
+      index === 0
+        ? strengthenFirstVisualTags(segment.visualTags, segment.text, tone)
+        : segment.visualTags?.length
+          ? segment.visualTags.slice(0, 4)
+          : inferVisualTagsFromText(segment.text, tone);
+
+    return {
+      ...segment,
+      id: segment.id || randomUUID(),
+      index,
+      type: sanitizeSegmentType(segment.type, index, arr.length),
+      visualTags,
+    };
+  });
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -274,7 +292,10 @@ function normalizeWhitespace(value: string) {
 
 function stripScriptRoleLabels(value: string) {
   return normalizeWhitespace(
-    value.replace(/\b(?:hook|setup|build|built|payoff|cta)\s*:\s*/gi, ""),
+    value.replace(
+      /\b(?:hook|setup|build|built|payoff|cta|step\s*\d+|question\s*\d+|question\s+one|question\s+two|question\s+three)\s*[:.-]\s*/gi,
+      "",
+    ),
   );
 }
 
@@ -373,19 +394,47 @@ function inferVisualTagsFromText(
   }
 
   if (/\b(toxic|manipulate|gaslight|poison|poisoned)\b/.test(lower)) {
-    add("toxic", "fake", "dark");
+    add("toxic", "manipulation", "fake", "dark");
+  }
+
+  if (/\b(red flag|warning sign|bad sign|danger sign|something is off|felt off)\b/.test(lower)) {
+    add("red_flag", "toxic", "staring", "fake");
+  }
+
+  if (/\b(mask|masks|pretend|pretending|persona|two faced|two-faced|fake smile)\b/.test(lower)) {
+    add("masks", "fake", "manipulation", "faceless");
   }
 
   if (/\b(blocked|block|censored|silenced|muted)\b/.test(lower)) {
     add("blocked", "negation", "censored");
   }
 
-  if (/\b(pain|hurt|wound|broken|betray|disappointment|suffer)\b/.test(lower)) {
+  if (/\b(pain|hurt|wound|broken|betray|disappointment|suffer|shame|ashamed)\b/.test(lower)) {
     add("pain", "sadness", "rain", "broken");
   }
 
   if (/\b(betray|betrayal|lied|fake friend|backstab)\b/.test(lower)) {
     add("betrayal", "fake", "broken_glass");
+  }
+
+  if (/\b(reject|rejected|rejection|left out|excluded|unwanted|ignored|left on read)\b/.test(lower)) {
+    add("rejection", "ignoring", "leaving", "loneliness_in_crowd");
+  }
+
+  if (/\b(boundary|boundaries|say no|said no|walk away|walked away|self respect)\b/.test(lower)) {
+    add("self_respect", "leaving", "doors", "confidence");
+  }
+
+  if (/\b(conflict|argument|fight|tension|silent treatment|cold|distance)\b/.test(lower)) {
+    add("conflict", "fight", "duo", "staring");
+  }
+
+  if (/\b(overthink|overthinking|can't sleep|cannot sleep|thoughts|spiral)\b/.test(lower)) {
+    add("overthinking", "thinking", "anxiety", "bedroom");
+  }
+
+  if (/\b(text|message|messages|dm|left on read|notification|reply)\b/.test(lower)) {
+    add("text_messages", "text_message", "phone", "scrolling_phone");
   }
 
   if (/\b(disappoint|disappointment|let down)\b/.test(lower)) {
@@ -396,12 +445,16 @@ function inferVisualTagsFromText(
     add("forgiveness", "peace", "healing");
   }
 
-  if (/\b(alone|lonely|loneliness|nobody|isolated)\b/.test(lower)) {
-    add("alone", "loneliness", "window");
+  if (/\b(alone|lonely|loneliness|nobody|isolated|invisible)\b/.test(lower)) {
+    add("alone", "loneliness", "loneliness_in_crowd", "window");
   }
 
   if (/\b(strength|strong|power|discipline|resilience|stoic)\b/.test(lower)) {
     add("strength", "resilience", "stoic", "determination");
+  }
+
+  if (/\b(transform|transformation|changed|change|glow up|became|become|rebuilt|new version)\b/.test(lower)) {
+    add("transformation", "confidence", "walking", "resilience");
   }
 
   if (/\b(proud|pride|earned it|made it)\b/.test(lower)) {
@@ -421,7 +474,7 @@ function inferVisualTagsFromText(
   }
 
   if (/\b(crowd|people|group|everyone|most people)\b/.test(lower)) {
-    add("group", "group_dynamics", "observing");
+    add("group", "group_dynamics", "loneliness_in_crowd", "observing");
   }
 
   if (/\b(stare|staring|looked at|watching)\b/.test(lower)) {
@@ -454,7 +507,7 @@ function inferVisualTagsFromText(
   }
 
   if (/\b(phone|scroll|scrolling|texting)\b/.test(lower)) {
-    add("phone", "scrolling_phone");
+    add("phone", "scrolling_phone", "text_messages", "text_message");
   }
 
   if (/\b(drive|driving|car|arrive|arriving|leave|leaving|door|bus|train|transport)\b/.test(lower)) {
@@ -513,6 +566,31 @@ function inferVisualTagsFromText(
   }
 
   return Array.from(tags).slice(0, 4);
+}
+
+function strengthenFirstVisualTags(
+  tags: string[] | undefined,
+  text: string,
+  tone: QuoteReelTone,
+): AllowedVisualTag[] {
+  const strongDefaults: AllowedVisualTag[] =
+    tone === "calm"
+      ? ["staring", "window", "alone"]
+      : tone === "aggressive"
+        ? ["conflict", "staring", "intense"]
+        : tone === "emotional"
+          ? ["rejection", "looking_down", "rain"]
+          : tone === "stoic"
+            ? ["faceless", "staring", "alone"]
+            : ["staring", "faceless", "rejection"];
+
+  const merged = [
+    ...sanitizeVisualTags(tags),
+    ...inferVisualTagsFromText(text, tone),
+    ...strongDefaults,
+  ];
+
+  return Array.from(new Set(merged)).slice(0, 4);
 }
 
 function buildFallbackSegmentsFromText(
@@ -814,32 +892,35 @@ async function generateLongFormScriptFromPrompt(input: {
       {
         role: "system",
         content: `
-You create viral vertical explainer scripts for reels and TikTok.
+You create viral vertical quote-reel scripts for reels and TikTok.
 
 Goals:
 - Write a script that usually supports at least 60 seconds of spoken narration.
-- Make it emotionally engaging, curiosity-driven, and retention-friendly.
+- Make it emotionally tense, curiosity-driven, and retention-friendly.
 - Break the script into intentional short segments.
 - Prefer around 16 to 24 segments for most 60 to 90 second reels.
 - Each segment should contain one complete micro-idea, not a tiny fragment.
 - Most segments should be 5 to 12 words on screen.
-- Visual changes should feel directed and motivated, not like a random slideshow.
+- Each segment should be a visual beat: a new thought, emotional turn, image, memory, conflict, or realization.
+- Visual changes should feel directed by the idea, not like a random slideshow.
 - Do not return long paragraph-like segments.
 - The pacing should feel premium and cinematic, not robotic.
 - The user wants premium retention pacing with enough time for each visual to land.
 
 Viral structure:
-- Open with a specific tension, not a generic quote.
-- The first 3 seconds must create a curiosity gap or unresolved problem.
-- Prefer formats like:
-  "If someone does X, try this."
-  "Most people miss this signal."
-  "There are 3 steps."
-  "This is the method nobody explains."
-- Give the concept a memorable name when useful, like "Red Shirt Method" or "The Mirror Test".
-- Use a clear arc: hook -> problem -> why it works -> step 1 -> step 2 -> step 3 -> payoff -> CTA.
-- Include at least 2 step/setup segments when the topic supports it.
-- Every 5 to 8 segments, add a mini-payoff, twist, or "but here's the catch" moment.
+- Open with a hard emotional question, accusation, paradox, or unfinished sentence.
+- The first 2 seconds must create tension before explanation.
+- The first segment must feel like a personal wound or uncomfortable truth, not an intro.
+- Prefer first-line formats like:
+  "Do you ever notice..."
+  "Nobody tells you..."
+  "The hardest part is..."
+  "It gets scary when..."
+  "You only realize it after..."
+  "Maybe the problem was never..."
+- Build a story-like emotional arc: tension -> recognition -> deeper wound -> twist -> release.
+- Do not write a tutorial, framework, method, checklist, or numbered lesson.
+- Every 4 to 7 segments, add a sharper turn, contradiction, or painful realization.
 
 Rules:
 - Return JSON only.
@@ -847,6 +928,7 @@ Rules:
 - Write in the same language as the user's topic or source text.
 - Never include segment labels in generatedText, finalScript, text, or voiceoverText.
 - Forbidden text prefixes: "hook:", "setup:", "build:", "built:", "payoff:", "cta:".
+- Forbidden structures: "step one", "step two", "question one", "question two", numbered lists, named methods, frameworks, and checklist language.
 - The "type" field is metadata only; it must never be spoken or shown as caption text.
 - Segment text should usually be short, clean, and readable on-screen.
 - voiceoverText can be slightly more natural than on-screen text, but should stay close.
@@ -862,7 +944,9 @@ Text writing rules:
 - Make it sound human, direct, viral and emotionally intelligent.
 - Avoid vague lines like "life is hard", "be yourself", "protect your peace" unless they are tied to a concrete action.
 - Use second person often.
-- Make captions feel like someone is revealing a useful social or psychological pattern.
+- Make captions feel like someone is revealing a social, emotional, or psychological pattern.
+- Make the first frames easy to visualize with a recognizable person, face, strong silhouette, conflict, stare, phone, door, group, rejection, or someone walking away.
+- visualTags should describe the visual beat for that segment. Prefer concrete tags such as rejection, loneliness_in_crowd, red_flag, transformation, masks, text_messages, conflict, staring, phone, doors, group, betrayal, toxic, fake, leaving, looking_down, faceless, silhouette, anxiety, overthinking, bedroom, rain, window.
 - If addCta is false, do not add CTA.
 - If addCta is true, CTA should be subtle and short.
 
@@ -906,7 +990,7 @@ Desired segment count: around ${
           estimateTargetSegmentCount(input.targetDurationSec)
         }
 
-Create a viral explainer reel script with a strong hook, a named method or clear steps, and a payoff.
+Create a viral quote reel script with an emotionally sharp opening, concrete visual beats, and a story-like payoff. Do not use steps, numbered questions, frameworks, or named methods.
 `,
       },
     ],
@@ -940,15 +1024,16 @@ async function enrichManualTextIntoPlan(input: {
       {
         role: "system",
         content: `
-You transform user-provided text into a segmented viral explainer video plan.
+You transform user-provided text into a segmented viral quote-reel video plan.
 
 Goals:
 - Preserve the meaning and emotional core of the user's text.
 - Rewrite lightly when needed so the output has a stronger hook, clearer stakes, and a better payoff.
-- Break it into many short segments for frequent visual changes.
+- Break it into short visual beats whenever the idea, emotion, scene, or context changes.
 - Keep the script natural for voice-over.
 - Turn abstract reflection into concrete social/psychological observations where possible.
-- Prefer a structure with hook, problem, method/steps, payoff and a subtle CTA.
+- Prefer a story-like emotional arc: tension -> recognition -> deeper wound -> twist -> release.
+- Do not turn the text into a tutorial, checklist, framework, named method, or numbered lesson.
 - Use only segment types from:
   hook, setup, build, payoff, cta
 - Use only visual tags from this allowed list:
@@ -959,6 +1044,7 @@ Rules:
 - Write in the same language as the source text.
 - Never include segment labels in generatedText, finalScript, text, or voiceoverText.
 - Forbidden text prefixes: "hook:", "setup:", "build:", "built:", "payoff:", "cta:".
+- Forbidden structures: "step one", "step two", "question one", "question two", numbered lists, named methods, frameworks, and checklist language.
 - The "type" field is metadata only; it must never be spoken or shown as caption text.
 - Do not add fake quotes.
 - Preserve the user's voice as much as possible.
@@ -969,8 +1055,9 @@ Rules:
 - Prefer around 16 to 24 segments for a 60 to 90 second reel.
 - Most on-screen text segments should stay short.
 - Visual changes should be frequent enough for retention, but coherent enough to feel edited.
-- The first segment must be a strong hook, not an intro.
-- Add a named method/test/framework when it naturally fits the text.
+- The first segment must be a hard emotional question, accusation, paradox, or incomplete-feeling thought, not an intro.
+- The first frames should be easy to visualize with a recognizable person, face, strong silhouette, conflict, stare, phone, door, group, rejection, or someone walking away.
+- visualTags should describe the visual beat for that segment. Prefer concrete tags such as rejection, loneliness_in_crowd, red_flag, transformation, masks, text_messages, conflict, staring, phone, doors, group, betrayal, toxic, fake, leaving, looking_down, faceless, silhouette, anxiety, overthinking, bedroom, rain, window.
 - Avoid vague standalone fragments that lose context.
 
 Output JSON shape:

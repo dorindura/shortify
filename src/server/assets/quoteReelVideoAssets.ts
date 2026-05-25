@@ -133,14 +133,14 @@ function isBrightOrComedicCategory(categoryPath: string): boolean {
 
 function preferredFamiliesForTone(tone?: QuoteReelTone): string[] {
   if (tone === "aggressive") {
-    return ["energy", "hooks", "characters", "symbolic"];
+    return ["characters", "social_situations", "actions", "energy", "symbolic"];
   }
 
   if (tone === "calm" || tone === "emotional") {
-    return ["emotions", "symbolic", "characters", "social_situations"];
+    return ["emotions", "characters", "social_situations", "symbolic", "actions"];
   }
 
-  return ["hooks", "symbolic", "characters", "emotions"];
+  return ["characters", "social_situations", "emotions", "symbolic", "actions"];
 }
 
 export async function listQuoteReelVideoAssets(): Promise<QuoteReelVideoAsset[]> {
@@ -159,14 +159,21 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
   anger: ["emotions/angry", "energy/intense", "characters/fight", "actions/reacting"],
   anxiety: ["emotions/anxiety", "characters/staring", "scenes_by_context/room", "symbolic/rain"],
   arriving: ["actions/arriving", "scenes_by_context/street", "scenes_by_context/public_transport"],
-  attention: ["hooks/attention", "characters/staring", "actions/observing"],
+  attention: ["characters/staring", "actions/observing", "hooks/attention"],
   awkward: ["social_situations/awkward_moments", "social_situations/being_judged"],
   bond: ["energy/bond", "social_situations/friendship", "characters/duo"],
   calm: ["energy/calm", "emotions/peace", "symbolic/sky", "symbolic/ocean"],
-  chaos: ["energy/chaos", "emotions/angry", "hooks/shocking"],
+  chaos: ["energy/chaos", "emotions/angry", "actions/reacting", "hooks/shocking"],
   city_night: ["symbolic/city_night", "symbolic/shadows", "scenes_by_context/street"],
+  conflict: [
+    "characters/fight",
+    "characters/duo",
+    "characters/staring",
+    "social_situations/group_dynamics",
+    "social_situations/being_judged",
+  ],
   confidence: ["emotions/confidence", "characters/walking", "characters/faceless"],
-  curiosity: ["hooks/curiosity", "actions/observing", "characters/thinking"],
+  curiosity: ["actions/observing", "characters/thinking", "characters/staring", "hooks/curiosity"],
   dark: ["symbolic/shadows", "symbolic/city_night", "symbolic/rain"],
   duo: ["characters/duo", "social_situations/friendship", "social_situations/being_included"],
   emotional: ["hooks/emotional", "emotions/sadness", "symbolic/rain"],
@@ -192,7 +199,7 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
     "social_situations/friendship",
     "characters/group",
   ],
-  intense: ["energy/intense", "hooks/shocking", "characters/fight"],
+  intense: ["energy/intense", "characters/fight", "actions/reacting", "hooks/shocking"],
   judged: [
     "social_situations/being_judged",
     "social_situations/group_dynamics",
@@ -202,7 +209,16 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
   leaving: ["actions/leaving", "characters/walking", "scenes_by_context/street"],
   listening: ["actions/listening", "characters/duo", "actions/helping"],
   loneliness: ["emotions/loneliness", "characters/alone"],
+  loneliness_in_crowd: [
+    "social_situations/loneliness_in_crowd",
+    "characters/group",
+    "social_situations/group_dynamics",
+    "social_situations/being_judged",
+    "characters/alone",
+  ],
   love: ["emotions/love", "social_situations/friendship", "characters/duo"],
+  manipulation: ["characters/fake", "emotions/toxic", "symbolic/shadows", "characters/staring"],
+  masks: ["symbolic/masks", "characters/fake", "characters/faceless", "symbolic/shadows"],
   movement: ["characters/walking", "characters/stepping", "actions/arriving"],
   nostalgia: ["emotions/nostalgia", "symbolic/sunset", "symbolic/window"],
   observing: ["actions/observing", "characters/staring", "characters/thinking"],
@@ -211,12 +227,27 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
   peace: ["emotions/peace", "symbolic/sky", "symbolic/ocean", "symbolic/sunrise"],
   protecting: ["actions/protecting", "actions/helping", "characters/duo"],
   rain: ["symbolic/rain", "emotions/sadness", "symbolic/window"],
-  reacting: ["actions/reacting", "hooks/shocking", "characters/staring"],
+  overthinking: ["characters/thinking", "emotions/anxiety", "scenes_by_context/bedroom", "symbolic/window"],
+  reacting: ["actions/reacting", "characters/staring", "hooks/shocking"],
+  red_flag: [
+    "hooks/red_flag",
+    "emotions/toxic",
+    "characters/fake",
+    "characters/staring",
+    "symbolic/masks",
+  ],
   reflection: [
     "characters/thinking",
     "symbolic/window",
     "scenes_by_context/room",
     "characters/staring",
+  ],
+  rejection: [
+    "actions/ignoring",
+    "actions/leaving",
+    "social_situations/being_judged",
+    "social_situations/group_dynamics",
+    "characters/alone",
   ],
   regret: ["emotions/sadness", "characters/thinking", "symbolic/rain"],
   resilience: ["emotions/confidence", "characters/walking", "symbolic/sunrise"],
@@ -229,6 +260,7 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
     "symbolic/shadows",
   ],
   shadows: ["symbolic/shadows", "symbolic/city_night", "symbolic/silhouettes"],
+  shame: ["characters/looking_down", "emotions/disappointment", "social_situations/being_judged"],
   shock: ["hooks/shocking", "actions/reacting", "energy/chaos"],
   silhouette: ["symbolic/silhouettes", "characters/faceless", "symbolic/shadows"],
   sky: ["symbolic/sky", "symbolic/sunrise", "symbolic/sunset"],
@@ -245,9 +277,50 @@ const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
     "symbolic/window",
     "scenes_by_context/room",
   ],
+  text_message: ["symbolic/phone", "actions/scrolling_phone", "emotions/anxiety"],
+  text_messages: ["symbolic/text_messages", "symbolic/phone", "actions/scrolling_phone", "emotions/anxiety"],
+  transformation: [
+    "hooks/transformation",
+    "emotions/confidence",
+    "emotions/determination",
+    "characters/walking",
+    "symbolic/sunrise",
+  ],
   walking: ["characters/walking", "characters/stepping", "scenes_by_context/street"],
   window: ["symbolic/window", "scenes_by_context/room", "characters/thinking"],
 };
+
+const FIRST_SEGMENT_IMPACT_CATEGORIES = [
+  "characters/staring",
+  "characters/faceless",
+  "characters/alone",
+  "characters/group",
+  "characters/duo",
+  "characters/looking_down",
+  "actions/scrolling_phone",
+  "actions/opening_door",
+  "actions/ignoring",
+  "actions/leaving",
+  "actions/reacting",
+  "hooks/red_flag",
+  "hooks/transformation",
+  "social_situations/being_judged",
+  "social_situations/group_dynamics",
+  "social_situations/awkward_moments",
+  "social_situations/loneliness_in_crowd",
+  "social_situations/rejection",
+  "emotions/betrayal",
+  "emotions/toxic",
+  "emotions/anxiety",
+  "emotions/loneliness",
+  "symbolic/phone",
+  "symbolic/text_messages",
+  "symbolic/masks",
+  "symbolic/doors",
+  "symbolic/window",
+  "symbolic/shadows",
+  "symbolic/silhouettes",
+];
 
 const DEFAULT_CATEGORY_FALLBACKS = [
   "characters/thinking",
@@ -278,7 +351,7 @@ function getCandidateCategoriesForSegment(
   }
 
   if (segment.type === "hook") {
-    ordered.unshift("hooks/attention", "hooks/curiosity", "hooks/shocking");
+    ordered.unshift(...FIRST_SEGMENT_IMPACT_CATEGORIES);
   }
 
   if (segment.type === "cta") {
@@ -341,8 +414,9 @@ function scoreAssetForSegment(
     }
   }
 
-  if (segment.type === "hook" && asset.categoryPath.startsWith("hooks/")) {
-    score += 30;
+  if (segment.type === "hook") {
+    if (FIRST_SEGMENT_IMPACT_CATEGORIES.includes(asset.categoryPath)) score += 42;
+    if (asset.categoryPath.startsWith("hooks/")) score -= 18;
   }
 
   if (segment.type === "cta" && asset.categoryPath.startsWith("symbolic/")) {
