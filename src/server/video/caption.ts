@@ -96,7 +96,7 @@ const PLAY_RES_Y = 1920;
 const QUOTE_CARD_CENTER_X = 540;
 const QUOTE_CARD_CENTER_Y = 960;
 const QUOTE_CARD_BOTTOM_TEXT_Y = 1375;
-const QUOTE_CARD_KARAOKE_FONT_SIZE = 74;
+const QUOTE_CARD_KARAOKE_FONT_SIZE = 86;
 const QUOTE_CARD_WORD_BY_WORD_FONT_SIZE = 112;
 const QUOTE_CARD_PROGRESSIVE_FONT_SIZE = 92;
 
@@ -504,8 +504,14 @@ function buildDefaultStyleLine(
       0,
       0,
       1,
-      4,
-      2,
+      quoteReelCaptionPreset === "card_bottom_karaoke" ||
+        quoteReelCaptionPreset === "card_bottom_premium_karaoke"
+        ? 6
+        : 4,
+      quoteReelCaptionPreset === "card_bottom_karaoke" ||
+        quoteReelCaptionPreset === "card_bottom_premium_karaoke"
+        ? 4
+        : 2,
       2,
       80,
       80,
@@ -812,6 +818,7 @@ function buildDraftChunksFromSegment(seg: WhisperSegment): CaptionDraftChunk[] {
 function buildKaraokeTextFromDraftChunk(
   chunk: CaptionDraftChunk,
   _customKeywords?: string[],
+  opts?: { uppercase?: boolean },
 ): string {
   const words = getValidWordsFromChunk(chunk);
 
@@ -822,7 +829,9 @@ function buildKaraokeTextFromDraftChunk(
     const w = words[index];
     const nextWord = words[index + 1];
 
-    const rawWord = safeAssText(w.text || "");
+    const rawWord = opts?.uppercase
+      ? safeAssText(w.text || "").toUpperCase()
+      : safeAssText(w.text || "");
     if (!rawWord) continue;
 
     const safeWordStartSec = Math.max(chunk.startSec, w.startSec);
@@ -863,9 +872,9 @@ function buildKaraokeTextFromDraftChunk(
 function buildBottomCardKaraokeText(chunk: CaptionDraftChunk, customKeywords?: string[]): string {
   return (
     `{\\an2\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_BOTTOM_TEXT_Y})}` +
-    `{\\fad(30,70)}` +
+    `{\\fad(20,45)}` +
     `{\\fsp0}` +
-    buildKaraokeTextFromDraftChunk(chunk, customKeywords)
+    buildKaraokeTextFromDraftChunk(chunk, customKeywords, { uppercase: true })
   );
 }
 

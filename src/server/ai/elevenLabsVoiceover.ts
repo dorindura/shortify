@@ -54,6 +54,13 @@ export type GenerateVoiceoverResult = {
   captionDraft?: CaptionDraftClip;
 };
 
+type FitVoiceoverToDurationInput = {
+  audioPath: string;
+  durationSec: number;
+  maxDurationSec: number;
+  captionDraft?: CaptionDraftClip;
+};
+
 type WordTiming = {
   text: string;
   startSec: number;
@@ -84,26 +91,26 @@ function resolveVoiceSpeed(
   const envSpeed = getOptionalEnvNumber("ELEVENLABS_SPEED");
   if (envSpeed != null) return clamp(envSpeed, 0.85, 1);
 
-  let speed = 0.92;
+  let speed = 0.98;
 
   if (preset === "motivational_male") {
-    speed = 0.95;
+    speed = 1;
   } else if (preset === "dark_male") {
-    speed = 0.9;
+    speed = 0.97;
   } else if (preset === "storyteller") {
-    speed = 0.91;
+    speed = 0.98;
   } else if (preset === "soft_female") {
-    speed = 0.9;
+    speed = 0.96;
   } else if (preset === "neutral") {
-    speed = 0.93;
+    speed = 0.99;
   }
 
-  if (tone === "aggressive") speed += 0.03;
-  if (tone === "calm") speed -= 0.03;
-  if (tone === "emotional") speed -= 0.02;
-  if (tone === "stoic") speed -= 0.02;
+  if (tone === "aggressive") speed += 0.02;
+  if (tone === "calm") speed -= 0.01;
+  if (tone === "emotional") speed -= 0.01;
+  if (tone === "stoic") speed -= 0.01;
 
-  return clamp(speed, 0.85, 1);
+  return clamp(speed, 0.94, 1);
 }
 
 function runCmd(
@@ -468,6 +475,104 @@ function buildCaptionDraftFromWordTimings(
   return {
     clipIndex: 0,
     chunks,
+  };
+}
+
+function buildAtempoFilter(speedFactor: number): string {
+  const filters: string[] = [];
+  let remaining = speedFactor;
+
+  while (remaining > 2) {
+    filters.push("atempo=2");
+    remaining /= 2;
+  }
+
+  while (remaining < 0.5) {
+    filters.push("atempo=0.5");
+    remaining /= 0.5;
+  }
+
+  filters.push(`atempo=${clamp(remaining, 0.5, 2).toFixed(6)}`);
+
+  return filters.join(",");
+}
+
+function scaleCaptionDraftTiming(
+  draft: CaptionDraftClip | undefined,
+  scale: number,
+): CaptionDraftClip | undefined {
+  if (!draft || !Number.isFinite(scale) || scale <= 0) return draft;
+
+  return {
+    ...draft,
+    chunks: draft.chunks.map((chunk) => ({
+      ...chunk,
+      startSec: chunk.startSec * scale,
+      endSec: chunk.endSec * scale,
+      words: chunk.words?.map((word) => ({
+        ...word,
+        startSec: word.startSec * scale,
+        endSec: word.endSec * scale,
+      })),
+    })),
+  };
+}
+
+export async function fitVoiceoverToMaxDuration(
+  input: FitVoiceoverToDurationInput,
+): Promise<{
+  audioPath: string;
+  durationSec: number;
+  captionDraft?: CaptionDraftClip;
+  wasAdjusted: boolean;
+}> {
+  const maxDurationSec = Number(input.maxDurationSec);
+  const durationSec = Number(input.durationSec);
+
+  if (
+    !Number.isFinite(maxDurationSec) ||
+    maxDurationSec <= 0 ||
+    !Number.isFinite(durationSec) ||
+    durationSec <= maxDurationSec
+  ) {
+    return {
+      audioPath: input.audioPath,
+      durationSec: input.durationSec,
+      captionDraft: input.captionDraft,
+      wasAdjusted: false,
+    };
+  }
+
+  await ensureDir(TTS_DIR);
+
+  const outputPath = path.join(TTS_DIR, `${randomUUID()}-fit.mp3`);
+  const speedFactor = durationSec / maxDurationSec;
+
+  await runCmd(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      input.audioPath,
+      "-filter:a",
+      buildAtempoFilter(speedFactor),
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "192k",
+      outputPath,
+    ],
+    "fitVoiceoverToMaxDuration",
+  );
+
+  const fittedDurationSec = await probeAudioDuration(outputPath);
+  const timingScale = fittedDurationSec / durationSec;
+
+  return {
+    audioPath: outputPath,
+    durationSec: fittedDurationSec,
+    captionDraft: scaleCaptionDraftTiming(input.captionDraft, timingScale),
+    wasAdjusted: true,
   };
 }
 

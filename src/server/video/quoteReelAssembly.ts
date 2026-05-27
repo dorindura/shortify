@@ -336,6 +336,34 @@ async function concatPreparedSegments(opts: {
   }
 }
 
+function buildConcatPathsToCoverDuration(
+  preparedSegments: PreparedSegment[],
+  targetDurationSec: number,
+): string[] {
+  const basePaths = preparedSegments.map((item) => item.preparedPath);
+  if (!basePaths.length) return [];
+
+  const baseDuration = preparedSegments.reduce((sum, item) => sum + item.durationSec, 0);
+  const safeTarget = Math.max(0, targetDurationSec);
+
+  if (baseDuration >= safeTarget) {
+    return basePaths;
+  }
+
+  const outputPaths = [...basePaths];
+  let duration = baseDuration;
+  let cursor = 0;
+
+  while (duration < safeTarget && outputPaths.length < basePaths.length * 4) {
+    const segment = preparedSegments[cursor % preparedSegments.length];
+    outputPaths.push(segment.preparedPath);
+    duration += segment.durationSec;
+    cursor += 1;
+  }
+
+  return outputPaths;
+}
+
 async function attachVoiceoverToVideo(opts: {
   videoPath: string;
   voiceoverAudioPath: string;
@@ -441,13 +469,14 @@ export async function assembleQuoteReel(
     const assetBySegmentId = buildSegmentAssetMap(assetPicks);
     let timelineCursorSec = 0;
 
+    const voiceoverDurationSec = input.voiceoverAudioPath
+      ? await probeDuration(input.voiceoverAudioPath)
+      : undefined;
+
     const targetDurationSec =
       typeof input.targetDurationSec === "number" && input.targetDurationSec > 0
         ? input.targetDurationSec
-        : input.voiceoverAudioPath
-        ? await probeDuration(input.voiceoverAudioPath)
-        : 70;
-
+        : voiceoverDurationSec ?? 70;
     const segmentDurations = getSegmentTargetDurations(
       segments,
       targetDurationSec,
@@ -500,7 +529,10 @@ export async function assembleQuoteReel(
     }
 
     await concatPreparedSegments({
-      inputPaths: preparedSegments.map((item) => item.preparedPath),
+      inputPaths: buildConcatPathsToCoverDuration(
+        preparedSegments,
+        input.voiceoverAudioPath ? (voiceoverDurationSec ?? targetDurationSec) + 0.75 : 0,
+      ),
       outputPath: draftVideoPath,
     });
 

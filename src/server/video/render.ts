@@ -28,7 +28,7 @@ type TextOverlay = {
   emojiPlacement?: OverlayEmojiPlacement;
 };
 
-type RenderQualityPreset = "standard" | "premium";
+type RenderQualityPreset = "standard" | "premium" | "socialPremium";
 
 type RenderOptions = {
   aspect?: JobAspect;
@@ -120,6 +120,23 @@ function escapeForSubtitles(pathStr: string): string {
 function getRenderQualityArgs(
   preset: RenderQualityPreset = "standard",
 ): string[] {
+  if (preset === "socialPremium") {
+    return [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "23",
+      "-maxrate",
+      "3.5M",
+      "-bufsize",
+      "5M",
+      "-pix_fmt",
+      "yuv420p",
+    ];
+  }
+
   if (preset === "premium") {
     return [
       "-c:v",
@@ -499,7 +516,11 @@ export async function renderShortsWithSubtitles(
       "-c:a",
       "aac",
       "-b:a",
-      opts?.qualityPreset === "premium" ? "192k" : "128k",
+      opts?.qualityPreset === "premium"
+        ? "192k"
+        : opts?.qualityPreset === "socialPremium"
+          ? "160k"
+          : "128k",
       ...(audioFilters.length ? ["-af", audioFilters.join(",")] : []),
       "-threads",
       ffThreads,
@@ -524,6 +545,8 @@ export async function renderShortsWithSubtitles(
         "-i",
         outVideoPath,
         "-vframes",
+        "1",
+        "-update",
         "1",
         "-q:v",
         "2",

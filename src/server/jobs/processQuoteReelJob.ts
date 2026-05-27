@@ -15,7 +15,10 @@ import {
   generateQuoteReelScriptPlan,
 } from "@/server/ai/quoteReelScriptGenerator";
 import { pickAssetsForQuoteReelSegments } from "@/server/assets/quoteReelVideoAssets";
-import { generateVoiceoverFromText } from "@/server/ai/elevenLabsVoiceover";
+import {
+  fitVoiceoverToMaxDuration,
+  generateVoiceoverFromText,
+} from "@/server/ai/elevenLabsVoiceover";
 import { assembleQuoteReel } from "@/server/video/quoteReelAssembly";
 import {
   type CaptionDraftClip,
@@ -160,9 +163,9 @@ export async function processQuoteReelJob(jobId: string) {
       ? existingMeta.captionPreset
       : getDefaultQuoteReelCaptionPreset();
 
-    const targetDurationSec = clamp(Number(existingMeta.targetDurationSec ?? 70), 45, 180);
-    const minDurationSec = clamp(Number(existingMeta.minDurationSec ?? 60), 45, 180);
-    const maxDurationSec = clamp(Number(existingMeta.maxDurationSec ?? 95), 50, 240);
+    const maxDurationSec = clamp(Number(existingMeta.maxDurationSec ?? 105), 50, 240);
+    const minDurationSec = clamp(Number(existingMeta.minDurationSec ?? 62), 45, maxDurationSec);
+    const targetDurationSec = clamp(Number(existingMeta.targetDurationSec ?? 75), minDurationSec, maxDurationSec);
 
     const sourceText =
       typeof existingMeta.sourceText === "string" ? existingMeta.sourceText.trim() : "";
@@ -276,11 +279,23 @@ export async function processQuoteReelJob(jobId: string) {
         voicePreset,
       });
 
-      voiceoverAudioPath = voiceover.audioPath;
       cleanupAudioPaths.push(voiceover.audioPath);
 
+      const fittedVoiceover = await fitVoiceoverToMaxDuration({
+        audioPath: voiceover.audioPath,
+        durationSec: voiceover.durationSec,
+        maxDurationSec,
+        captionDraft: voiceover.captionDraft,
+      });
+
+      voiceoverAudioPath = fittedVoiceover.audioPath;
+
+      if (fittedVoiceover.audioPath !== voiceover.audioPath) {
+        cleanupAudioPaths.push(fittedVoiceover.audioPath);
+      }
+
       actualTargetDurationSec = clamp(
-        Math.max(voiceover.durationSec, minDurationSec),
+        Math.max(fittedVoiceover.durationSec, minDurationSec),
         minDurationSec,
         maxDurationSec,
       );
@@ -290,9 +305,9 @@ export async function processQuoteReelJob(jobId: string) {
         voicePreset: voiceover.voicePreset,
         voiceId: voiceover.voiceId,
         modelId: voiceover.modelId,
-        audioPath: voiceover.audioPath,
-        durationSec: voiceover.durationSec,
-        captionDraft: voiceover.captionDraft,
+        audioPath: fittedVoiceover.audioPath,
+        durationSec: fittedVoiceover.durationSec,
+        captionDraft: fittedVoiceover.captionDraft,
       };
 
       await dbUpdateJobQuoteMeta(jobId, {
@@ -305,7 +320,7 @@ export async function processQuoteReelJob(jobId: string) {
         targetDurationSec,
         minDurationSec,
         maxDurationSec,
-        actualDurationSec: voiceover.durationSec,
+        actualDurationSec: fittedVoiceover.durationSec,
         captionsEnabled,
         captionStyle,
         captionPreset,
@@ -403,7 +418,7 @@ export async function processQuoteReelJob(jobId: string) {
         captionsEnabled: true,
         fadeOutSec: 1.5,
         normalizeAudio: true,
-        qualityPreset: "premium",
+        qualityPreset: "socialPremium",
       });
 
       finalVideoPath = toLocalAssetPath(rendered.videos[0]);
