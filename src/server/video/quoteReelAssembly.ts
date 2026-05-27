@@ -12,10 +12,10 @@ const ffThreads = String(process.env.FFMPEG_THREADS ?? "1");
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
-// Full-width cinematic video card, centered vertically over a mirrored background.
-const CARD_W = 960;
-const CARD_H = 900;
-const CARD_RADIUS = 36;
+// Centered cinematic video card on a clean solid canvas.
+const CARD_W = 860;
+const CARD_H = 620;
+const CARD_RADIUS = 32;
 
 type PreparedSegment = {
   segmentId: string;
@@ -55,11 +55,7 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function runCmd(
-  cmd: string,
-  args: string[],
-  logPrefix: string,
-): Promise<string> {
+function runCmd(cmd: string, args: string[], logPrefix: string): Promise<string> {
   return new Promise((resolve, reject) => {
     console.log(`[${logPrefix}] Running ${cmd} ${args.join(" ")}`);
 
@@ -82,9 +78,7 @@ function runCmd(
       if (code === 0) {
         resolve((stdout || stderr).trim());
       } else {
-        reject(
-          new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`),
-        );
+        reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
       }
     });
   });
@@ -161,11 +155,8 @@ function getSegmentTargetDurations(
     return weight;
   });
 
-  const totalWeight = weights.reduce((sum, value) => sum + value, 0) ||
-    segments.length;
-  const raw = weights.map((weight) =>
-    (normalizedTarget * weight) / totalWeight
-  );
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0) || segments.length;
+  const raw = weights.map((weight) => (normalizedTarget * weight) / totalWeight);
 
   const clamped = raw.map((value, index) => {
     const segment = segments[index];
@@ -191,39 +182,31 @@ function getSegmentTargetDurations(
 
 function buildCinematicCanvasFilter(aspect: JobAspect): string {
   const base = getCardVideoBaseFilters(aspect).join(",");
-  const backgroundBase = [
-    `scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=increase:flags=bicubic`,
-    `crop=${CANVAS_W}:${CANVAS_H}`,
-    "boxblur=24:2",
-    "eq=brightness=-0.18:saturation=0.75",
-    "format=rgba",
-  ].join(",");
 
   return [
-    `[0:v]split=2[bgsrc][cardsrc]`,
-    `[bgsrc]${backgroundBase}[bg]`,
-    `[cardsrc]${base},eq=brightness=-0.035:contrast=1.07:saturation=0.9,unsharp=5:5:0.35:3:3:0.14,format=rgba[vidraw]`,
+    `[0:v]${base},eq=brightness=-0.035:contrast=1.07:saturation=0.9,unsharp=5:5:0.35:3:3:0.14,format=rgba[vidraw]`,
+    `color=c=black:s=${CANVAS_W}x${CANVAS_H}:r=30,format=rgba[bg]`,
 
     // rounded rectangle alpha mask
     `nullsrc=s=${CARD_W}x${CARD_H},format=gray,geq=` +
-    `'lum=` +
-    `if(` +
-    `lte(abs(X-W/2),W/2-${CARD_RADIUS})*lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
-    `255,` +
-    `if(` +
-    `lte(abs(X-W/2),W/2-${CARD_RADIUS})+lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
-    `255,` +
-    `if(` +
-    `lte(` +
-    `(abs(X-W/2)-(W/2-${CARD_RADIUS}))*(abs(X-W/2)-(W/2-${CARD_RADIUS})) + ` +
-    `(abs(Y-H/2)-(H/2-${CARD_RADIUS}))*(abs(Y-H/2)-(H/2-${CARD_RADIUS})),` +
-    `${CARD_RADIUS * CARD_RADIUS}` +
-    `),` +
-    `255,` +
-    `0` +
-    `)` +
-    `)` +
-    `)'[mask]`,
+      `'lum=` +
+      `if(` +
+      `lte(abs(X-W/2),W/2-${CARD_RADIUS})*lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
+      `255,` +
+      `if(` +
+      `lte(abs(X-W/2),W/2-${CARD_RADIUS})+lte(abs(Y-H/2),H/2-${CARD_RADIUS}),` +
+      `255,` +
+      `if(` +
+      `lte(` +
+      `(abs(X-W/2)-(W/2-${CARD_RADIUS}))*(abs(X-W/2)-(W/2-${CARD_RADIUS})) + ` +
+      `(abs(Y-H/2)-(H/2-${CARD_RADIUS}))*(abs(Y-H/2)-(H/2-${CARD_RADIUS})),` +
+      `${CARD_RADIUS * CARD_RADIUS}` +
+      `),` +
+      `255,` +
+      `0` +
+      `)` +
+      `)` +
+      `)'[mask]`,
 
     `[vidraw][mask]alphamerge[vidrounded]`,
 
@@ -305,10 +288,7 @@ async function concatPreparedSegments(opts: {
     throw new Error("No prepared segments to concatenate");
   }
 
-  const listPath = path.join(
-    path.dirname(outputPath),
-    `${randomUUID()}-concat.txt`,
-  );
+  const listPath = path.join(path.dirname(outputPath), `${randomUUID()}-concat.txt`);
 
   const fileList = inputPaths
     .map((p) => `file '${path.resolve(p).replace(/'/g, "'\\''")}'`)
@@ -317,18 +297,7 @@ async function concatPreparedSegments(opts: {
   await fs.writeFile(listPath, fileList, "utf8");
 
   try {
-    const args = [
-      "-y",
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      listPath,
-      "-c",
-      "copy",
-      outputPath,
-    ];
+    const args = ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outputPath];
 
     await runCmd("ffmpeg", args, "quoteReelAssembly:concatPreparedSegments");
   } finally {
@@ -476,11 +445,8 @@ export async function assembleQuoteReel(
     const targetDurationSec =
       typeof input.targetDurationSec === "number" && input.targetDurationSec > 0
         ? input.targetDurationSec
-        : voiceoverDurationSec ?? 70;
-    const segmentDurations = getSegmentTargetDurations(
-      segments,
-      targetDurationSec,
-    );
+        : (voiceoverDurationSec ?? 70);
+    const segmentDurations = getSegmentTargetDurations(segments, targetDurationSec);
 
     for (let i = 0; i < segments.length; i += 1) {
       const segment = segments[i];
@@ -491,17 +457,9 @@ export async function assembleQuoteReel(
       }
 
       const assetDuration = await probeDuration(assetPick.assetPath);
-      const segmentDuration = clamp(
-        segmentDurations[i],
-        1.25,
-        Math.max(1.25, assetDuration),
-      );
+      const segmentDuration = clamp(segmentDurations[i], 1.25, Math.max(1.25, assetDuration));
       const preparedDuration = Math.min(segmentDuration, assetDuration);
-      const startSec = chooseClipStart(
-        assetDuration,
-        preparedDuration,
-        i,
-      );
+      const startSec = chooseClipStart(assetDuration, preparedDuration, i);
 
       const preparedPath = path.join(
         preparedDir,
@@ -568,9 +526,7 @@ export async function assembleQuoteReel(
       actualDurationSec,
     };
   } catch (error) {
-    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(
-      () => {},
-    );
+    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
 }
