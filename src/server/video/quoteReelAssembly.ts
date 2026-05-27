@@ -210,7 +210,22 @@ function buildCinematicCanvasFilter(aspect: JobAspect): string {
 
     `[vidraw][mask]alphamerge[vidrounded]`,
 
-    `[bg][vidrounded]overlay=(W-${CARD_W})/2:(H-${CARD_H})/2,setsar=1,format=yuv420p[vout]`,
+    `[bg][vidrounded]overlay=(W-${CARD_W})/2:(H-${CARD_H})/2[composed]`,
+    `nullsrc=s=${CANVAS_W}x${CANVAS_H}:r=30,format=rgba,geq=` +
+      `r='0':g='0':b='0':` +
+      `a='48+28*pow((X-W/2)/(W/2),2)+24*pow((Y-H/2)/(H/2),2)+18*sin((X/W*6.283185)+(T*0.22))+12*sin(((X+Y)/(W+H)*6.283185)-(T*0.16))'` +
+      `[shadowveil]`,
+    `[composed][shadowveil]overlay=0:0[shadowed]`,
+    `nullsrc=s=${CANVAS_W}x${CANVAS_H}:r=30,format=rgba,geq=` +
+      `r='235':g='224':b='198':` +
+      `a='if(gt(sin((X+T*18)*0.075+sin(Y*0.017)*7)*sin((Y-T*26)*0.082+sin(X*0.013)*9),0.994),72,0)'` +
+      `[dustfine]`,
+    `nullsrc=s=${CANVAS_W}x${CANVAS_H}:r=30,format=rgba,geq=` +
+      `r='205':g='190':b='160':` +
+      `a='if(gt(sin((X-T*9)*0.041+Y*0.019)*sin((Y+T*14)*0.047+X*0.021),0.997),95,0)'` +
+      `[dustslow]`,
+    `[shadowed][dustfine]overlay=0:0[withdustfine]`,
+    `[withdustfine][dustslow]overlay=0:0,setsar=1,format=yuv420p[vout]`,
   ].join(";");
 }
 
