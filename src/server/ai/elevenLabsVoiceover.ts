@@ -91,26 +91,26 @@ function resolveVoiceSpeed(
   const envSpeed = getOptionalEnvNumber("ELEVENLABS_SPEED");
   if (envSpeed != null) return clamp(envSpeed, 0.85, 1);
 
-  let speed = 0.98;
+  let speed = 0.92;
 
   if (preset === "motivational_male") {
-    speed = 1;
+    speed = 0.95;
   } else if (preset === "dark_male") {
-    speed = 0.97;
+    speed = 0.9;
   } else if (preset === "storyteller") {
-    speed = 0.98;
+    speed = 0.91;
   } else if (preset === "soft_female") {
-    speed = 0.96;
+    speed = 0.9;
   } else if (preset === "neutral") {
-    speed = 0.99;
+    speed = 0.93;
   }
 
-  if (tone === "aggressive") speed += 0.02;
-  if (tone === "calm") speed -= 0.01;
-  if (tone === "emotional") speed -= 0.01;
-  if (tone === "stoic") speed -= 0.01;
+  if (tone === "aggressive") speed += 0.03;
+  if (tone === "calm") speed -= 0.03;
+  if (tone === "emotional") speed -= 0.02;
+  if (tone === "stoic") speed -= 0.02;
 
-  return clamp(speed, 0.94, 1);
+  return clamp(speed, 0.85, 1);
 }
 
 function runCmd(

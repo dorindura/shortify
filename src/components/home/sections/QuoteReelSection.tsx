@@ -167,11 +167,11 @@ export default function QuoteReelSection({
             disabled={!voiceEnabled}
             className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 outline-none focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500/20 disabled:opacity-50"
           >
-            <option value="storyteller">Storyteller</option>
+            <option value="storyteller">English grandpa</option>
             <option value="dark_male">Dark male</option>
             <option value="motivational_male">Motivational male</option>
             <option value="soft_female">Soft female</option>
-            <option value="neutral">Neutral</option>
+            <option value="neutral">Romanian grandpa</option>
           </select>
         </div>
       </div>
