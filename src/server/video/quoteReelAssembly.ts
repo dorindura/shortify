@@ -13,8 +13,8 @@ const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
 // Centered cinematic video card on a clean solid canvas.
-const CARD_W = 860;
-const CARD_H = 620;
+const CARD_W = 1080;
+const CARD_H = 780;
 const CARD_RADIUS = 32;
 
 type PreparedSegment = {
