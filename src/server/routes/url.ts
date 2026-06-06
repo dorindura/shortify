@@ -9,12 +9,26 @@ import { enforceJobLimits } from "@server/billing/enforceLimits";
 import { requireUser } from "@server/auth/requireUser";
 import { supabaseAdmin } from "@server/supabaseAdmin";
 
+type UrlJobBody = {
+  url?: unknown;
+  selectionMode?: unknown;
+  customRanges?: unknown;
+  jobGoal?: unknown;
+  outputMode?: unknown;
+  summaryTargetSec?: unknown;
+  aspect?: unknown;
+  clipDurationSec?: unknown;
+  maxClips?: unknown;
+  captionsEnabled?: unknown;
+  captionStyle?: unknown;
+};
+
 export async function registerUrlRoute(app: FastifyInstance) {
   app.post("/api/url", async (req, reply) => {
     const user = await requireUser(req, reply);
     if (!user) return;
 
-    const body = (req.body ?? {}) as any;
+    const body = (req.body ?? {}) as UrlJobBody;
 
     const selectionMode = body.selectionMode === "custom" ? "custom" : "auto";
 
@@ -33,6 +47,14 @@ export async function registerUrlRoute(app: FastifyInstance) {
 
     const jobGoalRaw = String(body.jobGoal ?? "shorts");
     const jobGoal = jobGoalRaw === "summary" ? "summary" : "shorts";
+    const outputModeRaw = String(body.outputMode ?? "shorts");
+    const isLocalOutputMode = outputModeRaw === "full_x2_local";
+
+    if (isLocalOutputMode && process.env.NODE_ENV === "production") {
+      return reply.code(403).send({ error: "Local-only output mode is disabled in production" });
+    }
+
+    const outputMode = isLocalOutputMode ? "full_x2_local" : "shorts";
 
     const summaryTargetSecRaw = Number(body.summaryTargetSec ?? 90);
     const summaryTargetSec = Number.isFinite(summaryTargetSecRaw)
@@ -112,6 +134,7 @@ export async function registerUrlRoute(app: FastifyInstance) {
       progress: 0,
       shortsConfig: {
         selectionMode,
+        outputMode: jobGoal === "shorts" ? outputMode : "shorts",
         customRanges,
       },
     };

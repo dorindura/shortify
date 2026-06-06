@@ -16,6 +16,7 @@ import type {
   LocalQuoteReelMode,
   LocalQuoteTone,
   LocalQuoteVoicePreset,
+  LocalShortsOutputMode,
   LocalShortsSelectionMode,
   MultiSourceInput,
   MultiSourceSegmentDraft,
@@ -88,6 +89,8 @@ export default function HomePageClient() {
   const [maxDurationSec, setMaxDurationSec] = useState(95);
 
   const [selectionMode, setSelectionMode] = useState<LocalShortsSelectionMode>("auto");
+  const [shortsOutputMode, setShortsOutputMode] = useState<LocalShortsOutputMode>("shorts");
+  const [showLocalOutputModes, setShowLocalOutputModes] = useState(false);
   const [customRanges, setCustomRanges] = useState<CustomRange[]>([
     {
       id: crypto.randomUUID(),
@@ -429,6 +432,7 @@ export default function HomePageClient() {
           captionsEnabled,
           captionStyle,
           jobGoal,
+          outputMode: showLocalOutputModes ? shortsOutputMode : "shorts",
           summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
           selectionMode,
           customRanges: selectionMode === "custom" ? buildCustomRangesPayload(customRanges) : [],
@@ -598,6 +602,11 @@ export default function HomePageClient() {
   }, []);
 
   useEffect(() => {
+    const hostname = window.location.hostname;
+    setShowLocalOutputModes(hostname === "localhost" || hostname === "127.0.0.1");
+  }, []);
+
+  useEffect(() => {
     if (!hasActiveJobs) return;
 
     const intervalId = setInterval(
@@ -723,6 +732,9 @@ export default function HomePageClient() {
             isQuoteReel={isQuoteReel}
             aspect={aspect}
             setAspect={setAspect}
+            shortsOutputMode={shortsOutputMode}
+            setShortsOutputMode={setShortsOutputMode}
+            showLocalOutputModes={showLocalOutputModes}
             optimizedLabel={optimizedLabel}
             jobGoal={jobGoal}
             setJobGoal={setJobGoal}

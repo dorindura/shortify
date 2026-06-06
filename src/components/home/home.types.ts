@@ -9,6 +9,7 @@ export type LocalJobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_e
 export type LocalQuoteTone = "aggressive" | "cinematic" | "calm" | "dark" | "emotional" | "stoic";
 
 export type LocalShortsSelectionMode = "auto" | "custom";
+export type LocalShortsOutputMode = "shorts" | "full_x2_local";
 export type LocalQuoteReelMode = "manual_text" | "ai_text";
 export type LocalQuoteVoicePreset =
   | "dark_male"

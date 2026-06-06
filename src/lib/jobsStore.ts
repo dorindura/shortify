@@ -1,6 +1,7 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
 export type ShortsSelectionMode = "auto" | "custom";
+export type ShortsOutputMode = "shorts" | "full_x2_local";
 export type JobType = "upload" | "url" | "quote_reel" | "multi_source_edit";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
 export type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
@@ -56,6 +57,7 @@ export type ShortsCustomClip = {
 
 export type ShortsConfig = {
   selectionMode: ShortsSelectionMode;
+  outputMode?: ShortsOutputMode;
   customRanges?: (ShortsCustomRange | ShortsCustomClip)[];
 };
 

@@ -21,6 +21,7 @@ import {
   createClipsFromVideoUsingRanges,
 } from "@server/video/clip";
 import { renderPreviewClips, renderShortsWithSubtitles } from "@server/video/render";
+import { renderFullVideoAtSpeed } from "@server/video/fullSpeed";
 import {
   analyzeTranscriptForClips,
   analyzeTranscriptForSummary,
@@ -88,6 +89,14 @@ function normalizeCustomClipGroups(input: unknown): CustomClipGroup[] {
   return groups;
 }
 
+function isLocalFullSpeedOutput(shortsConfig: unknown) {
+  return (
+    typeof shortsConfig === "object" &&
+    shortsConfig != null &&
+    (shortsConfig as { outputMode?: unknown }).outputMode === "full_x2_local"
+  );
+}
+
 export async function processJob(jobId: string) {
   const job = await dbGetJob(jobId);
   if (!job) {
@@ -129,6 +138,35 @@ export async function processJob(jobId: string) {
       typeof job.summary_target_sec === "number" ? job.summary_target_sec : 90;
     const shortsConfig = job.shorts_config ?? null;
     const isCustomSelection = !!shortsConfig && shortsConfig.selectionMode === "custom";
+
+    if (jobGoal === "shorts" && isLocalFullSpeedOutput(shortsConfig)) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("Local full x2 output is disabled in production.");
+      }
+
+      await dbUpdateJobStage(jobId, "rendering", 70);
+      const outputPath = await renderFullVideoAtSpeed(videoInput, {
+        jobId,
+        speed: 2,
+      });
+
+      await dbSetJobClips(jobId, [videoInput]);
+      await dbSetJobCaptionedResults(jobId, [`local:${outputPath}`], []);
+      await dbSetJobReviewReady(jobId, false);
+      await dbUpdateJobStage(jobId, "finished", 100);
+      await dbUpdateJobStatus(jobId, "done");
+
+      await cleanupLocalJobArtifacts({
+        downloadedVideoPath: downloadedVideoPath ?? undefined,
+        clipPaths: [],
+        audioPaths,
+        subtitlePaths: [],
+        extraPaths: [],
+      });
+
+      console.log(`[processJob] Local full x2 output created: ${outputPath}`);
+      return;
+    }
 
     // --- AI CLIP ANALYSIS ---
     await dbUpdateJobStage(jobId, "captioning", 25);

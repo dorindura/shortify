@@ -7,6 +7,7 @@ import type {
   LocalQuoteReelMode,
   LocalQuoteTone,
   LocalQuoteVoicePreset,
+  LocalShortsOutputMode,
   LocalShortsSelectionMode,
   MultiSourceInput,
   MultiSourceSegmentDraft,
@@ -31,6 +32,9 @@ type Props = {
   isQuoteReel: boolean;
   aspect: LocalJobAspect;
   setAspect: (value: LocalJobAspect) => void;
+  shortsOutputMode: LocalShortsOutputMode;
+  setShortsOutputMode: (value: LocalShortsOutputMode) => void;
+  showLocalOutputModes: boolean;
   optimizedLabel: string;
   jobGoal: LocalJobGoal;
   setJobGoal: (value: LocalJobGoal) => void;
@@ -106,6 +110,9 @@ export default function CreateJobPanel(props: Props) {
     isQuoteReel,
     aspect,
     setAspect,
+    shortsOutputMode,
+    setShortsOutputMode,
+    showLocalOutputModes,
     optimizedLabel,
     jobGoal,
     setJobGoal,
@@ -226,7 +233,9 @@ export default function CreateJobPanel(props: Props) {
                   loading ||
                   isQuoteReel ||
                   isMultiSourceEdit ||
-                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                  (shortsOutputMode !== "full_x2_local" &&
+                    selectionMode === "custom" &&
+                    validCustomRangesCount === 0)
                 }
                 className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -293,6 +302,9 @@ export default function CreateJobPanel(props: Props) {
         <OutputFormatSection
           aspect={aspect}
           setAspect={setAspect}
+          shortsOutputMode={shortsOutputMode}
+          setShortsOutputMode={setShortsOutputMode}
+          showLocalOutputModes={showLocalOutputModes}
           isQuoteReel={isQuoteReel}
           optimizedLabel={optimizedLabel}
         />

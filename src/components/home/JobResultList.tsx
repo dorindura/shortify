@@ -15,7 +15,9 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
       ? "Generated reel"
       : job.jobGoal === "multi_source_edit"
         ? "Final edited video"
-        : "Captioned shorts";
+        : job.shortsConfig?.outputMode === "full_x2_local"
+          ? "Local full x2 output"
+          : "Captioned shorts";
 
   return (
     <div className="mt-3 space-y-2">
@@ -28,13 +30,17 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
 
       <div className="grid grid-cols-1 gap-2">
         {job.captionedClips.map((url, idx) => {
+          const isLocalResult = url.startsWith("local:");
+          const localPath = isLocalResult ? url.slice("local:".length) : "";
           const thumb = job.captionedThumbs?.[idx];
           const title =
             job.jobGoal === "quote_reel"
               ? "Quote Reel"
               : job.jobGoal === "multi_source_edit"
                 ? "Final Video"
-                : `Short ${idx + 1}`;
+                : isLocalResult
+                  ? "Full video x2"
+                  : `Short ${idx + 1}`;
 
           const filename =
             job.jobGoal === "quote_reel"
@@ -65,21 +71,29 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
               <div className="flex flex-1 flex-col justify-between text-[11px]">
                 <div className="font-medium text-slate-100">{title}</div>
                 <div className="mt-1 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => onDownload(url, filename, key)}
-                    disabled={isDownloading}
-                    className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isThisDownloading ? "Downloading..." : "Download"}
-                  </button>
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full border border-sky-500/80 px-2.5 py-1 text-[10px] font-semibold text-sky-300 transition hover:bg-sky-500/10"
-                  >
-                    Preview
-                  </a>
+                  {isLocalResult ? (
+                    <code className="break-all rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[10px] text-emerald-300">
+                      {localPath}
+                    </code>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => onDownload(url, filename, key)}
+                        disabled={isDownloading}
+                        className="rounded-full border bg-sky-500 px-2.5 py-1 text-[10px] font-semibold text-slate-950 shadow-sm shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isThisDownloading ? "Downloading..." : "Download"}
+                      </button>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-sky-500/80 px-2.5 py-1 text-[10px] font-semibold text-sky-300 transition hover:bg-sky-500/10"
+                      >
+                        Preview
+                      </a>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
