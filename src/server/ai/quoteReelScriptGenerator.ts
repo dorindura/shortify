@@ -221,10 +221,7 @@ function densifySegments(
 
   const expanded = segments.flatMap((segment) => {
     const textParts = splitSegmentTextForReel(segment.text, 14);
-    const voiceParts = splitSegmentTextForReel(
-      segment.voiceoverText || segment.text,
-      14,
-    );
+    const voiceParts = splitSegmentTextForReel(segment.voiceoverText || segment.text, 14);
 
     const partCount = Math.max(textParts.length, voiceParts.length, 1);
 
@@ -233,13 +230,10 @@ function densifySegments(
     }
 
     return Array.from({ length: partCount }).map((_, index) => {
-      const text = textParts[index] || textParts[textParts.length - 1] ||
-        segment.text;
+      const text = textParts[index] || textParts[textParts.length - 1] || segment.text;
 
-      const voiceoverText = voiceParts[index] ||
-        voiceParts[voiceParts.length - 1] ||
-        segment.voiceoverText ||
-        text;
+      const voiceoverText =
+        voiceParts[index] || voiceParts[voiceParts.length - 1] || segment.voiceoverText || text;
 
       return {
         id: randomUUID(),
@@ -258,9 +252,7 @@ function densifySegments(
 
   // if still too few, rebuild from final script-ish combined text
   if (finalSegments.length < desiredCount * 0.7) {
-    const mergedText = finalSegments.map((s) => s.voiceoverText || s.text).join(
-      " ",
-    );
+    const mergedText = finalSegments.map((s) => s.voiceoverText || s.text).join(" ");
     finalSegments = buildFallbackSegmentsFromText(mergedText, tone, addCta);
   }
 
@@ -288,6 +280,14 @@ function clamp(n: number, min: number, max: number) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeManualScriptText(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function stripScriptRoleLabels(value: string) {
@@ -366,24 +366,24 @@ function sanitizeVisualTags(tags: unknown): AllowedVisualTag[] {
   if (!Array.isArray(tags)) return [];
 
   const normalized = tags
-    .map((item) => String(item || "").trim().toLowerCase())
+    .map((item) =>
+      String(item || "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean)
     .filter((tag): tag is AllowedVisualTag =>
-      (ALLOWED_VISUAL_TAGS as readonly string[]).includes(tag)
+      (ALLOWED_VISUAL_TAGS as readonly string[]).includes(tag),
     );
 
   return Array.from(new Set(normalized)).slice(0, 4);
 }
 
-function inferVisualTagsFromText(
-  text: string,
-  tone: QuoteReelTone,
-): AllowedVisualTag[] {
+function inferVisualTagsFromText(text: string, tone: QuoteReelTone): AllowedVisualTag[] {
   const lower = text.toLowerCase();
   const tags = new Set<AllowedVisualTag>();
 
-  const add = (...items: AllowedVisualTag[]) =>
-    items.forEach((item) => tags.add(item));
+  const add = (...items: AllowedVisualTag[]) => items.forEach((item) => tags.add(item));
 
   if (/\b(anger|angry|mad|rage|furious|resentment|hate)\b/.test(lower)) {
     add("anger", "intense", "chaos", "fight");
@@ -417,7 +417,9 @@ function inferVisualTagsFromText(
     add("betrayal", "fake", "broken_glass");
   }
 
-  if (/\b(reject|rejected|rejection|left out|excluded|unwanted|ignored|left on read)\b/.test(lower)) {
+  if (
+    /\b(reject|rejected|rejection|left out|excluded|unwanted|ignored|left on read)\b/.test(lower)
+  ) {
     add("rejection", "ignoring", "leaving", "loneliness_in_crowd");
   }
 
@@ -453,7 +455,11 @@ function inferVisualTagsFromText(
     add("strength", "resilience", "stoic", "determination");
   }
 
-  if (/\b(transform|transformation|changed|change|glow up|became|become|rebuilt|new version)\b/.test(lower)) {
+  if (
+    /\b(transform|transformation|changed|change|glow up|became|become|rebuilt|new version)\b/.test(
+      lower,
+    )
+  ) {
     add("transformation", "confidence", "walking", "resilience");
   }
 
@@ -510,7 +516,9 @@ function inferVisualTagsFromText(
     add("phone", "scrolling_phone", "text_messages", "text_message");
   }
 
-  if (/\b(drive|driving|car|arrive|arriving|leave|leaving|door|bus|train|transport)\b/.test(lower)) {
+  if (
+    /\b(drive|driving|car|arrive|arriving|leave|leaving|door|bus|train|transport)\b/.test(lower)
+  ) {
     if (/\b(drive|driving|car)\b/.test(lower)) add("driving");
     if (/\b(arrive|arriving)\b/.test(lower)) add("arriving");
     if (/\b(leave|leaving)\b/.test(lower)) add("leaving");
@@ -599,9 +607,7 @@ function buildFallbackSegmentsFromText(
   addCta = true,
 ): QuoteReelSegment[] {
   const sentences = splitIntoSentences(stripScriptRoleLabels(text));
-  const microSegments = sentences.flatMap((sentence) =>
-    splitLongSentence(sentence, 14)
-  );
+  const microSegments = sentences.flatMap((sentence) => splitLongSentence(sentence, 14));
 
   const filtered = microSegments
     .map((item) => normalizeWhitespace(item))
@@ -619,9 +625,7 @@ function buildFallbackSegmentsFromText(
 
   if (addCta && segmentsBase.length >= 5) {
     const last = segmentsBase[segmentsBase.length - 1];
-    if (
-      !/save this|follow for more|remember this|don't forget/i.test(last.text)
-    ) {
+    if (!/save this|follow for more|remember this|don't forget/i.test(last.text)) {
       segmentsBase.push({
         id: randomUUID(),
         index: segmentsBase.length,
@@ -678,9 +682,7 @@ function normalizeAiSegments(
   const rawSegments = input
     .map((item, index, arr): QuoteReelSegment | null => {
       const text = stripScriptRoleLabels(String(item?.text ?? ""));
-      const voiceoverText = stripScriptRoleLabels(
-        String(item?.voiceoverText ?? text),
-      );
+      const voiceoverText = stripScriptRoleLabels(String(item?.voiceoverText ?? text));
 
       if (!text) return null;
 
@@ -692,9 +694,7 @@ function normalizeAiSegments(
         type: sanitizeSegmentType(item?.type, index, arr.length),
         text,
         voiceoverText: voiceoverText || text,
-        visualTags: sanitizedTags.length
-          ? sanitizedTags
-          : inferVisualTagsFromText(text, tone),
+        visualTags: sanitizedTags.length ? sanitizedTags : inferVisualTagsFromText(text, tone),
       };
     })
     .filter((item): item is QuoteReelSegment => item !== null);
@@ -723,13 +723,7 @@ function buildManualCaption(text: string, tone: QuoteReelTone): string {
 }
 
 function defaultHashtagsForTone(tone: QuoteReelTone): string[] {
-  const common = [
-    "#mindset",
-    "#motivation",
-    "#selfgrowth",
-    "#quotes",
-    "#viralvideo",
-  ];
+  const common = ["#mindset", "#motivation", "#selfgrowth", "#quotes", "#viralvideo"];
 
   if (tone === "dark") {
     return [...common, "#darkpsychology", "#deepthoughts", "#nightvibes"];
@@ -750,9 +744,7 @@ function defaultHashtagsForTone(tone: QuoteReelTone): string[] {
   return [...common, "#cinematic", "#deepthoughts", "#storytelling"];
 }
 
-function defaultMusicSuggestionsForTone(
-  tone: QuoteReelTone,
-): QuoteReelMusicSuggestion[] {
+function defaultMusicSuggestionsForTone(tone: QuoteReelTone): QuoteReelMusicSuggestion[] {
   if (tone === "dark") {
     return [
       {
@@ -986,9 +978,7 @@ Approximate target words: ${targetWords}
 Approximate min words: ${minWords}
 Approximate max words: ${maxWords}
 Add CTA: ${input.addCta ? "yes" : "no"}
-Desired segment count: around ${
-          estimateTargetSegmentCount(input.targetDurationSec)
-        }
+Desired segment count: around ${estimateTargetSegmentCount(input.targetDurationSec)}
 
 Create a viral quote reel script with an emotionally sharp opening, concrete visual beats, and a story-like payoff. Do not use steps, numbered questions, frameworks, or named methods.
 `,
@@ -1093,9 +1083,7 @@ Minimum duration seconds: ${input.minDurationSec}
 Maximum duration seconds: ${input.maxDurationSec}
 Source text word count: ${wordCount}
 Desired minimum words for timing: ${minWords}
-Desired segment count: around ${
-          estimateTargetSegmentCount(input.targetDurationSec)
-        }
+Desired segment count: around ${estimateTargetSegmentCount(input.targetDurationSec)}
 Add CTA: ${input.addCta ? "yes" : "no"}
 
 User text:
@@ -1122,10 +1110,12 @@ export async function generateQuoteReelScriptPlan(
   const addCta = input.addCta ?? true;
 
   if (input.mode === "manual_text") {
-    const sourceText = normalizeWhitespace(input.text ?? "");
+    const sourceText = normalizeManualScriptText(input.text ?? "");
     if (!sourceText) {
       throw new Error("manual_text mode requires text");
     }
+
+    const finalScript = sourceText;
 
     try {
       const ai = await enrichManualTextIntoPlan({
@@ -1137,31 +1127,18 @@ export async function generateQuoteReelScriptPlan(
         addCta,
       });
 
-      const finalScript =
-        stripScriptRoleLabels(ai.finalScript || ai.generatedText || sourceText) ||
-        sourceText;
-      const baseSegments = normalizeAiSegments(
-        ai.segments,
-        input.tone,
-        finalScript,
-        addCta,
-      );
+      const baseSegments = normalizeAiSegments(ai.segments, input.tone, finalScript, addCta);
 
-      const segments = densifySegments(
-        baseSegments,
-        input.tone,
-        targetDurationSec,
-        addCta,
-      );
+      const segments = densifySegments(baseSegments, input.tone, targetDurationSec, addCta);
 
       return {
         sourceMode: "manual_text",
         sourceText,
-        generatedText: stripScriptRoleLabels(ai.generatedText || "") ||
-          (finalScript !== sourceText ? finalScript : undefined),
+        generatedText: undefined,
         finalScript,
         segments,
-        instagramCaption: normalizeWhitespace(ai.instagramCaption || "") ||
+        instagramCaption:
+          normalizeWhitespace(ai.instagramCaption || "") ||
           buildManualCaption(finalScript, input.tone),
         hashtags: normalizeHashtags(ai.hashtags).length
           ? normalizeHashtags(ai.hashtags)
@@ -1176,11 +1153,7 @@ export async function generateQuoteReelScriptPlan(
         error,
       );
 
-      const fallbackBaseSegments = buildFallbackSegmentsFromText(
-        sourceText,
-        input.tone,
-        addCta,
-      );
+      const fallbackBaseSegments = buildFallbackSegmentsFromText(sourceText, input.tone, addCta);
 
       const fallbackSegments = densifySegments(
         fallbackBaseSegments,
@@ -1223,19 +1196,9 @@ export async function generateQuoteReelScriptPlan(
     throw new Error("AI text mode returned no finalScript");
   }
 
-  const baseSegments = normalizeAiSegments(
-    ai.segments,
-    input.tone,
-    finalScript,
-    addCta,
-  );
+  const baseSegments = normalizeAiSegments(ai.segments, input.tone, finalScript, addCta);
 
-  const segments = densifySegments(
-    baseSegments,
-    input.tone,
-    targetDurationSec,
-    addCta,
-  );
+  const segments = densifySegments(baseSegments, input.tone, targetDurationSec, addCta);
 
   return {
     sourceMode: "ai_text",
@@ -1243,8 +1206,8 @@ export async function generateQuoteReelScriptPlan(
     generatedText: generatedText || finalScript,
     finalScript,
     segments,
-    instagramCaption: normalizeWhitespace(ai.instagramCaption || "") ||
-      buildManualCaption(finalScript, input.tone),
+    instagramCaption:
+      normalizeWhitespace(ai.instagramCaption || "") || buildManualCaption(finalScript, input.tone),
     hashtags: normalizeHashtags(ai.hashtags).length
       ? normalizeHashtags(ai.hashtags)
       : defaultHashtagsForTone(input.tone),
@@ -1268,7 +1231,10 @@ export function buildQuoteReelPlanFromFinalScript(input: {
   hashtags?: string[];
   musicSuggestions?: QuoteReelMusicSuggestion[];
 }): QuoteReelScriptPlan {
-  const finalScript = stripScriptRoleLabels(input.finalScript);
+  const finalScript =
+    input.sourceMode === "manual_text"
+      ? normalizeManualScriptText(input.finalScript)
+      : stripScriptRoleLabels(input.finalScript);
   if (!finalScript) {
     throw new Error("finalScript is required");
   }
@@ -1290,7 +1256,8 @@ export function buildQuoteReelPlanFromFinalScript(input: {
     generatedText: input.generatedText,
     finalScript,
     segments,
-    instagramCaption: normalizeWhitespace(input.instagramCaption || "") ||
+    instagramCaption:
+      normalizeWhitespace(input.instagramCaption || "") ||
       buildManualCaption(finalScript, input.tone),
     hashtags,
     musicSuggestions,
