@@ -29,6 +29,9 @@ type Props = {
   startCheckout: () => Promise<void>;
   handleUrlSubmit: (e: React.FormEvent) => Promise<void>;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  selectedUploadFileName: string | null;
+  uploadInputResetKey: number;
+  clearSelectedUploadFile: () => void;
   isQuoteReel: boolean;
   aspect: LocalJobAspect;
   setAspect: (value: LocalJobAspect) => void;
@@ -107,6 +110,9 @@ export default function CreateJobPanel(props: Props) {
     startCheckout,
     handleUrlSubmit,
     handleFileChange,
+    selectedUploadFileName,
+    uploadInputResetKey,
+    clearSelectedUploadFile,
     isQuoteReel,
     aspect,
     setAspect,
@@ -239,8 +245,10 @@ export default function CreateJobPanel(props: Props) {
                 }
                 className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span className="hidden sm:inline">Generate from URL</span>
-                <span className="sm:hidden">Generate</span>
+                <span className="hidden sm:inline">
+                  {selectedUploadFileName ? "Generate from upload" : "Generate from URL"}
+                </span>
+                <span className="sm:hidden">{selectedUploadFileName ? "Upload" : "Generate"}</span>
               </button>
             </form>
 
@@ -264,9 +272,24 @@ export default function CreateJobPanel(props: Props) {
                 <span className="text-slate-400">MP4 / MOV / WebM</span>
               </div>
               <p className="max-w-xs text-[11px] text-slate-500">
-                Drop a file here or click to browse from your computer.
+                {selectedUploadFileName
+                  ? selectedUploadFileName
+                  : "Drop a file here or click to browse from your computer."}
               </p>
+              {selectedUploadFileName && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    clearSelectedUploadFile();
+                  }}
+                  className="relative z-10 rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300 hover:border-rose-400 hover:text-rose-200"
+                >
+                  Clear file
+                </button>
+              )}
               <input
+                key={uploadInputResetKey}
                 type="file"
                 accept="video/*"
                 onChange={handleFileChange}

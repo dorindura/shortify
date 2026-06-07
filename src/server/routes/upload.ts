@@ -1,6 +1,12 @@
 // src/app/api/upload/route.ts
 import { FastifyInstance } from "fastify";
-import type { CaptionStyle, Job, JobAspect } from "@lib/jobsStore";
+import type {
+  CaptionStyle,
+  Job,
+  JobAspect,
+  ShortsCustomClip,
+  ShortsCustomRange,
+} from "@lib/jobsStore";
 import { hasVideoExtension } from "../../utils/validators";
 import { randomUUID } from "crypto";
 import { enqueueJob } from "@server/jobs/queue";
@@ -8,8 +14,13 @@ import { enforceJobLimits } from "@server/billing/enforceLimits";
 import { createJob } from "@lib/jobsRepo";
 import { requireUser } from "@server/auth/requireUser";
 import { promises as fs } from "fs";
+import { createWriteStream } from "fs";
 import path from "path";
 import { supabaseAdmin } from "@server/supabaseAdmin";
+import { pipeline } from "stream/promises";
+import { UPLOAD_MAX_FILE_BYTES, formatBytes } from "@server/uploadLimits";
+
+type MultipartField = { value?: unknown };
 
 export async function registerUploadRoute(app: FastifyInstance) {
   app.post("/api/upload", async (req, reply) => {
@@ -26,7 +37,7 @@ export async function registerUploadRoute(app: FastifyInstance) {
     }
 
     // Read extra fields from multipart
-    const fields = mp.fields as Record<string, any>;
+    const fields = mp.fields as Record<string, MultipartField | undefined>;
     const aspectField = String(fields?.aspect?.value ?? "horizontal");
     const aspect: JobAspect =
       aspectField === "horizontal" ||
@@ -37,6 +48,14 @@ export async function registerUploadRoute(app: FastifyInstance) {
 
     const jobGoalField = String(fields?.jobGoal?.value ?? "shorts");
     const jobGoal = jobGoalField === "summary" ? "summary" : "shorts";
+    const outputModeRaw = String(fields?.outputMode?.value ?? "shorts");
+    const isLocalOutputMode = outputModeRaw === "full_x2_local";
+
+    if (isLocalOutputMode && process.env.NODE_ENV === "production") {
+      return reply.code(403).send({ error: "Local-only output mode is disabled in production" });
+    }
+
+    const outputMode = isLocalOutputMode ? "full_x2_local" : "shorts";
 
     const summaryTargetSecRaw = Number(fields?.summaryTargetSec?.value ?? 90);
     const summaryTargetSec = Number.isFinite(summaryTargetSecRaw)
@@ -66,10 +85,13 @@ export async function registerUploadRoute(app: FastifyInstance) {
     const selectionMode =
       String(fields?.selectionMode?.value ?? "auto") === "custom" ? "custom" : "auto";
 
-    let customRanges: any[] = [];
+    let customRanges: (ShortsCustomRange | ShortsCustomClip)[] = [];
 
     try {
-      customRanges = JSON.parse(fields?.customRanges?.value ?? "[]");
+      const parsed = JSON.parse(String(fields?.customRanges?.value ?? "[]")) as unknown;
+      customRanges = Array.isArray(parsed)
+        ? (parsed as (ShortsCustomRange | ShortsCustomClip)[])
+        : [];
     } catch {
       customRanges = [];
     }
@@ -106,7 +128,31 @@ export async function registerUploadRoute(app: FastifyInstance) {
     const fileName = `${Date.now()}-${safeName}`;
     const filePath = path.join(uploadsDir, fileName);
 
-    await fs.writeFile(filePath, await mp.toBuffer());
+    try {
+      await pipeline(mp.file, createWriteStream(filePath));
+    } catch (error: unknown) {
+      await fs.unlink(filePath).catch(() => {});
+      const uploadError = error as { code?: string };
+
+      if (uploadError?.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.code(413).send({
+          error: `Uploaded file is too large. Maximum upload size is ${formatBytes(
+            UPLOAD_MAX_FILE_BYTES,
+          )}.`,
+        });
+      }
+
+      throw error;
+    }
+
+    if (mp.file.truncated) {
+      await fs.unlink(filePath).catch(() => {});
+      return reply.code(413).send({
+        error: `Uploaded file is too large. Maximum upload size is ${formatBytes(
+          UPLOAD_MAX_FILE_BYTES,
+        )}.`,
+      });
+    }
 
     const now = new Date().toISOString();
 
@@ -132,6 +178,7 @@ export async function registerUploadRoute(app: FastifyInstance) {
       progress: 0,
       shortsConfig: {
         selectionMode,
+        outputMode: jobGoal === "shorts" ? outputMode : "shorts",
         customRanges,
       },
     };

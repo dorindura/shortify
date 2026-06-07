@@ -26,6 +26,7 @@ async function main() {
   const { registerMultiSourceEditRoute } = await import("./routes/multiSourceEdit");
   const { registerMultiSourceEditReviewRoute } = await import("./routes/multiSourceEditReview");
   const { registerMultiSourceEditRenderRoute } = await import("./routes/multiSourceEditRender");
+  const { UPLOAD_MAX_FILE_BYTES, formatBytes } = await import("./uploadLimits");
 
   const app = Fastify({
     logger: true,
@@ -51,7 +52,22 @@ async function main() {
   });
 
   await app.register(multipart, {
-    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+    limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+  });
+
+  app.setErrorHandler((error, req, reply) => {
+    const maybeError = error as { code?: string };
+
+    if (maybeError?.code === "FST_REQ_FILE_TOO_LARGE") {
+      return reply.code(413).send({
+        error: `Uploaded file is too large. Maximum upload size is ${formatBytes(
+          UPLOAD_MAX_FILE_BYTES,
+        )}.`,
+      });
+    }
+
+    req.log.error(error);
+    return reply.send(error);
   });
 
   app.get("/health", async () => ({ ok: true }));

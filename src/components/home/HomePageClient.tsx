@@ -59,6 +59,8 @@ export default function HomePageClient() {
   const [url, setUrl] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [uploadInputResetKey, setUploadInputResetKey] = useState(0);
 
   const [aspect, setAspect] = useState<LocalJobAspect>("vertical");
   const [clipDurationSec, setClipDurationSec] = useState<number>(30);
@@ -82,8 +84,9 @@ export default function HomePageClient() {
   const [quoteText, setQuoteText] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
-  const [quoteCaptionPreset, setQuoteCaptionPreset] =
-    useState<LocalQuoteCaptionPreset>("card_bottom_premium_karaoke");
+  const [quoteCaptionPreset, setQuoteCaptionPreset] = useState<LocalQuoteCaptionPreset>(
+    "card_bottom_premium_karaoke",
+  );
   const [targetDurationSec, setTargetDurationSec] = useState(70);
   const [minDurationSec, setMinDurationSec] = useState(60);
   const [maxDurationSec, setMaxDurationSec] = useState(95);
@@ -418,6 +421,11 @@ export default function HomePageClient() {
       return;
     }
 
+    if (selectedUploadFile) {
+      await createUploadJob(selectedUploadFile);
+      return;
+    }
+
     if (!url.trim()) return;
 
     setLoading(true);
@@ -462,18 +470,15 @@ export default function HomePageClient() {
     }
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function createUploadJob(file: File) {
     const formData = new FormData();
-    formData.append("file", file);
     formData.append("aspect", aspect);
     formData.append("clipDurationSec", String(clipDurationSec));
     formData.append("maxClips", String(maxClips));
     formData.append("captionsEnabled", String(captionsEnabled));
     formData.append("captionStyle", captionStyle);
     formData.append("jobGoal", jobGoal);
+    formData.append("outputMode", showLocalOutputModes ? shortsOutputMode : "shorts");
     formData.append("selectionMode", selectionMode);
 
     if (selectionMode === "custom") {
@@ -483,6 +488,8 @@ export default function HomePageClient() {
     if (jobGoal === "summary") {
       formData.append("summaryTargetSec", String(summaryTargetSec));
     }
+
+    formData.append("file", file);
 
     setLoading(true);
     try {
@@ -507,11 +514,26 @@ export default function HomePageClient() {
 
       setPaywallMessage(null);
       setShowUpgrade(false);
-      e.target.value = "";
+      setSelectedUploadFile(null);
+      setUploadInputResetKey((prev) => prev + 1);
       await fetchJobs();
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSelectedUploadFile(file);
+    setPaywallMessage(null);
+    setShowUpgrade(false);
+  }
+
+  function clearSelectedUploadFile() {
+    setSelectedUploadFile(null);
+    setUploadInputResetKey((prev) => prev + 1);
   }
 
   async function handleManageBilling() {
@@ -729,6 +751,9 @@ export default function HomePageClient() {
             startCheckout={startCheckout}
             handleUrlSubmit={handleUrlSubmit}
             handleFileChange={handleFileChange}
+            selectedUploadFileName={selectedUploadFile?.name ?? null}
+            uploadInputResetKey={uploadInputResetKey}
+            clearSelectedUploadFile={clearSelectedUploadFile}
             isQuoteReel={isQuoteReel}
             aspect={aspect}
             setAspect={setAspect}

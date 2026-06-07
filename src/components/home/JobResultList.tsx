@@ -33,6 +33,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
           const isLocalResult = url.startsWith("local:");
           const localPath = isLocalResult ? url.slice("local:".length) : "";
           const thumb = job.captionedThumbs?.[idx];
+          const canRenderThumb = !!thumb && !thumb.startsWith("local:");
           const title =
             job.jobGoal === "quote_reel"
               ? "Quote Reel"
@@ -57,7 +58,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
               key={url}
               className="flex gap-2 rounded-lg border border-slate-800 bg-slate-950/90 p-2"
             >
-              {thumb && (
+              {canRenderThumb && (
                 <div className="relative h-20 w-12 overflow-hidden rounded-md border border-slate-800/80 bg-slate-900/90">
                   <img src={thumb} alt={title} className="h-full w-full object-cover" />
                   {(job.aspect === "vertical" || job.aspect === "verticalLetterbox") && (
@@ -72,7 +73,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
                 <div className="font-medium text-slate-100">{title}</div>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {isLocalResult ? (
-                    <code className="break-all rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[10px] text-emerald-300">
+                    <code className="rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[10px] break-all text-emerald-300">
                       {localPath}
                     </code>
                   ) : (
