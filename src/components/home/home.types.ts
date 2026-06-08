@@ -11,6 +11,7 @@ export type LocalQuoteTone = "aggressive" | "cinematic" | "calm" | "dark" | "emo
 export type LocalShortsSelectionMode = "auto" | "custom";
 export type LocalShortsOutputMode = "shorts" | "full_x2_local";
 export type LocalQuoteReelMode = "manual_text" | "ai_text";
+export type LocalQuoteVisualSource = "auto" | "cartoons";
 export type LocalQuoteVoicePreset =
   | "dark_male"
   | "storyteller"

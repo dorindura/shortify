@@ -15,6 +15,7 @@ import type {
   LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVisualSource,
   LocalQuoteVoicePreset,
   LocalShortsOutputMode,
   LocalShortsSelectionMode,
@@ -81,6 +82,7 @@ export default function HomePageClient() {
   const [quotePrompt, setQuotePrompt] = useState("");
   const [quoteTone, setQuoteTone] = useState<LocalQuoteTone>("cinematic");
   const [quoteMode, setQuoteMode] = useState<LocalQuoteReelMode>("ai_text");
+  const [quoteVisualSource, setQuoteVisualSource] = useState<LocalQuoteVisualSource>("auto");
   const [quoteText, setQuoteText] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
@@ -315,6 +317,7 @@ export default function HomePageClient() {
               mode: quoteMode,
               text: quoteText,
               tone: quoteTone,
+              visualSource: quoteVisualSource,
               captionsEnabled,
               captionStyle,
               captionPreset: quoteCaptionPreset,
@@ -328,6 +331,7 @@ export default function HomePageClient() {
               mode: quoteMode,
               prompt: quotePrompt,
               tone: quoteTone,
+              visualSource: quoteVisualSource,
               captionsEnabled,
               captionStyle,
               captionPreset: quoteCaptionPreset,
@@ -783,6 +787,8 @@ export default function HomePageClient() {
             setQuotePrompt={setQuotePrompt}
             quoteTone={quoteTone}
             setQuoteTone={setQuoteTone}
+            quoteVisualSource={quoteVisualSource}
+            setQuoteVisualSource={setQuoteVisualSource}
             createQuoteReelJob={createQuoteReelJob}
             captionsEnabled={captionsEnabled}
             setCaptionsEnabled={setCaptionsEnabled}

@@ -263,6 +263,11 @@ function safeAssText(raw: string): string {
   return (raw ?? "").replace(/\r?\n/g, "\\N").replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
 }
 
+function safeAssCaptionWord(raw: string, opts?: { lowercase?: boolean }): string {
+  const safeText = safeAssText(raw);
+  return opts?.lowercase ? safeText.toLowerCase() : safeText;
+}
+
 function normalizeWordKey(value: string): string {
   return normalizeText(value)
     .toLowerCase()
@@ -882,13 +887,14 @@ function buildCenterWordByWordEvents(
   chunk: CaptionDraftChunk,
   captionStyle: CaptionStyle,
   customKeywords?: string[],
+  opts?: { lowercase?: boolean },
 ): Array<{ start: string; end: string; styleName: string; text: string }> {
   const words = getValidWordsFromChunk(chunk);
 
   return words
     .filter((w) => normalizeText(w.text))
     .map((w, index) => {
-      const rawWord = safeAssText(w.text);
+      const rawWord = safeAssCaptionWord(w.text, { lowercase: opts?.lowercase });
       const nextWord = words[index + 1];
 
       const startSec = w.startSec;
@@ -927,12 +933,13 @@ function buildProgressiveWordsLineText(
   words: CaptionDraftWord[],
   currentIndex: number,
   customKeywords?: string[],
+  opts?: { lowercase?: boolean },
 ): string {
   const visibleWords = words.slice(0, currentIndex + 1);
 
   return visibleWords
     .map((word, index) => {
-      const rawWord = safeAssText(word.text);
+      const rawWord = safeAssCaptionWord(word.text, { lowercase: opts?.lowercase });
       if (!rawWord) return "";
 
       const isCurrentWord = index === currentIndex;
@@ -952,6 +959,7 @@ function buildCenterProgressiveWordsEvents(
   chunk: CaptionDraftChunk,
   _captionStyle: CaptionStyle,
   customKeywords?: string[],
+  opts?: { lowercase?: boolean },
 ): Array<{ start: string; end: string; styleName: string; text: string }> {
   const words = getValidWordsFromChunk(chunk).filter((w) => normalizeText(w.text));
 
@@ -970,7 +978,9 @@ function buildCenterProgressiveWordsEvents(
     const popInEnd = Math.min(90, durMs);
     const popScale = 108;
 
-    const lineText = buildProgressiveWordsLineText(words, index, customKeywords);
+    const lineText = buildProgressiveWordsLineText(words, index, customKeywords, {
+      lowercase: opts?.lowercase,
+    });
 
     const text =
       `{\\an5\\pos(${QUOTE_CARD_CENTER_X},${QUOTE_CARD_CENTER_Y})}` +
@@ -1198,8 +1208,12 @@ function draftClipToAss(
     ) {
       const events =
         quoteReelCaptionPreset === "card_center_progressive_words"
-          ? buildCenterProgressiveWordsEvents(chunk, captionStyle, customKeywords)
-          : buildCenterWordByWordEvents(chunk, captionStyle, customKeywords);
+          ? buildCenterProgressiveWordsEvents(chunk, captionStyle, customKeywords, {
+              lowercase: true,
+            })
+          : buildCenterWordByWordEvents(chunk, captionStyle, customKeywords, {
+              lowercase: true,
+            });
 
       for (const event of events) {
         const dialogue = [

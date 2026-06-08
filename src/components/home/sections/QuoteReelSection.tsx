@@ -2,6 +2,7 @@ import type {
   LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVisualSource,
   LocalQuoteVoicePreset,
 } from "../home.types";
 
@@ -15,6 +16,8 @@ type Props = {
   setQuoteText: (value: string) => void;
   quoteTone: LocalQuoteTone;
   setQuoteTone: (value: LocalQuoteTone) => void;
+  quoteVisualSource: LocalQuoteVisualSource;
+  setQuoteVisualSource: (value: LocalQuoteVisualSource) => void;
   voiceEnabled: boolean;
   setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   voicePreset: LocalQuoteVoicePreset;
@@ -43,6 +46,8 @@ export default function QuoteReelSection({
   setQuoteText,
   quoteTone,
   setQuoteTone,
+  quoteVisualSource,
+  setQuoteVisualSource,
   voiceEnabled,
   setVoiceEnabled,
   voicePreset,
@@ -173,6 +178,41 @@ export default function QuoteReelSection({
             <option value="soft_female">Soft female</option>
             <option value="neutral">Romanian grandpa</option>
           </select>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <label className="mb-2 block text-[11px] font-medium text-slate-300">Visual source</label>
+        <div className="grid gap-2 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setQuoteVisualSource("auto")}
+            className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+              quoteVisualSource === "auto"
+                ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+            }`}
+          >
+            <div className="font-semibold">Smart cinematic</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Match each segment with emotional video assets.
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setQuoteVisualSource("cartoons")}
+            className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+              quoteVisualSource === "cartoons"
+                ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
+                : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
+            }`}
+          >
+            <div className="font-semibold">Cartoons</div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Random clips from the cartoons asset folder.
+            </div>
+          </button>
         </div>
       </div>
 

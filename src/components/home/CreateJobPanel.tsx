@@ -6,6 +6,7 @@ import type {
   LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVisualSource,
   LocalQuoteVoicePreset,
   LocalShortsOutputMode,
   LocalShortsSelectionMode,
@@ -66,6 +67,8 @@ type Props = {
   setQuotePrompt: (value: string) => void;
   quoteTone: LocalQuoteTone;
   setQuoteTone: (value: LocalQuoteTone) => void;
+  quoteVisualSource: LocalQuoteVisualSource;
+  setQuoteVisualSource: (value: LocalQuoteVisualSource) => void;
   createQuoteReelJob: () => Promise<void>;
   captionsEnabled: boolean;
   setCaptionsEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
@@ -142,6 +145,8 @@ export default function CreateJobPanel(props: Props) {
     setQuotePrompt,
     quoteTone,
     setQuoteTone,
+    quoteVisualSource,
+    setQuoteVisualSource,
     createQuoteReelJob,
     captionsEnabled,
     setCaptionsEnabled,
@@ -387,6 +392,8 @@ export default function CreateJobPanel(props: Props) {
             setQuoteText={setQuoteText}
             quoteTone={quoteTone}
             setQuoteTone={setQuoteTone}
+            quoteVisualSource={quoteVisualSource}
+            setQuoteVisualSource={setQuoteVisualSource}
             voiceEnabled={voiceEnabled}
             setVoiceEnabled={setVoiceEnabled}
             voicePreset={voicePreset}

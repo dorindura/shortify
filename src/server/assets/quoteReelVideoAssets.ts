@@ -1,7 +1,12 @@
 // src/server/assets/quoteReelVideoAssets.ts
 import fs from "fs/promises";
 import path from "path";
-import type { QuoteReelAssetPick, QuoteReelSegment, QuoteReelTone } from "@lib/jobsStore";
+import type {
+  QuoteReelAssetPick,
+  QuoteReelSegment,
+  QuoteReelTone,
+  QuoteReelVisualSource,
+} from "@lib/jobsStore";
 
 const VIDEO_ROOT = path.join(process.cwd(), "public", "assets", "videos");
 
@@ -17,6 +22,7 @@ export type QuoteReelVideoAsset = {
 type PickAssetsInput = {
   segments: QuoteReelSegment[];
   tone?: QuoteReelTone;
+  visualSource?: QuoteReelVisualSource;
 };
 
 const CATEGORY_TOKEN_ALIASES: Record<string, string[]> = {
@@ -143,15 +149,23 @@ function preferredFamiliesForTone(tone?: QuoteReelTone): string[] {
   return ["characters", "social_situations", "emotions", "symbolic", "actions"];
 }
 
-export async function listQuoteReelVideoAssets(): Promise<QuoteReelVideoAsset[]> {
+export async function listQuoteReelVideoAssets(
+  visualSource: QuoteReelVisualSource = "auto",
+): Promise<QuoteReelVideoAsset[]> {
   const files = await walkVideoFiles(VIDEO_ROOT);
 
-  return files.map((assetPath) => ({
-    assetPath,
-    relativePath: path.relative(VIDEO_ROOT, assetPath).split(path.sep).join("/"),
-    categoryPath: toCategoryPath(assetPath),
-    filename: path.basename(assetPath),
-  }));
+  return files
+    .map((assetPath) => ({
+      assetPath,
+      relativePath: path.relative(VIDEO_ROOT, assetPath).split(path.sep).join("/"),
+      categoryPath: toCategoryPath(assetPath),
+      filename: path.basename(assetPath),
+    }))
+    .filter((asset) =>
+      visualSource === "cartoons"
+        ? asset.categoryPath === "cartoons" || asset.categoryPath.startsWith("cartoons/")
+        : asset.categoryPath !== "cartoons" && !asset.categoryPath.startsWith("cartoons/"),
+    );
 }
 
 const VISUAL_TAG_CATEGORY_MAP: Record<string, string[]> = {
@@ -494,13 +508,17 @@ function chooseBestAsset(
 export async function pickAssetsForQuoteReelSegments(
   input: PickAssetsInput,
 ): Promise<QuoteReelAssetPick[]> {
-  const { segments, tone } = input;
+  const { segments, tone, visualSource = "auto" } = input;
 
   if (!segments.length) return [];
 
-  const assets = await listQuoteReelVideoAssets();
+  const assets = await listQuoteReelVideoAssets(visualSource);
   if (!assets.length) {
-    throw new Error("No video assets found in public/assets/videos");
+    throw new Error(
+      visualSource === "cartoons"
+        ? "No cartoon video assets found in public/assets/videos/cartoons"
+        : "No video assets found in public/assets/videos",
+    );
   }
 
   const picks: QuoteReelAssetPick[] = [];
@@ -512,14 +530,23 @@ export async function pickAssetsForQuoteReelSegments(
   let previousCategoryPath: string | null = null;
 
   for (const [segmentIndex, segment] of segments.entries()) {
-    const selected = chooseBestAsset(assets, segment, {
-      previousAssetPath,
-      previousCategoryPath,
-      usedAssetCounts,
-      usedCategoryCounts,
-      tone,
-      segmentIndex,
-    });
+    let selected: QuoteReelVideoAsset;
+
+    if (visualSource === "cartoons") {
+      selected = shuffle(assets).sort(
+        (a, b) =>
+          (usedAssetCounts.get(a.assetPath) ?? 0) - (usedAssetCounts.get(b.assetPath) ?? 0),
+      )[0];
+    } else {
+      selected = chooseBestAsset(assets, segment, {
+        previousAssetPath,
+        previousCategoryPath,
+        usedAssetCounts,
+        usedCategoryCounts,
+        tone,
+        segmentIndex,
+      });
+    }
 
     usedAssetCounts.set(selected.assetPath, (usedAssetCounts.get(selected.assetPath) ?? 0) + 1);
     usedCategoryCounts.set(

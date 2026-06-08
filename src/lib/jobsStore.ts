@@ -28,6 +28,8 @@ export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark" | "emot
 
 export type QuoteReelMode = "manual_text" | "ai_text";
 
+export type QuoteReelVisualSource = "auto" | "cartoons";
+
 export type QuoteReelVoicePreset =
   | "dark_male"
   | "storyteller"
@@ -132,6 +134,7 @@ export type QuoteReelVoiceoverMeta = {
 export type QuoteReelMeta = {
   mode?: QuoteReelMode;
   tone?: QuoteReelTone;
+  visualSource?: QuoteReelVisualSource;
 
   sourceText?: string;
   generatedText?: string;

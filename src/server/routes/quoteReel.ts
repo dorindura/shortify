@@ -8,6 +8,7 @@ import type {
   QuoteReelCaptionPreset,
   QuoteReelMode,
   QuoteReelTone,
+  QuoteReelVisualSource,
   QuoteReelVoicePreset,
 } from "@lib/jobsStore";
 import { createJob } from "@lib/jobsRepo";
@@ -40,6 +41,8 @@ const ALLOWED_VOICE_PRESETS: QuoteReelVoicePreset[] = [
   "motivational_male",
   "neutral",
 ];
+
+const ALLOWED_VISUAL_SOURCES: QuoteReelVisualSource[] = ["auto", "cartoons"];
 
 const ALLOWED_QUOTE_REEL_CAPTION_PRESETS: QuoteReelCaptionPreset[] = [
   "card_bottom_karaoke",
@@ -102,6 +105,13 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
     const tone: QuoteReelTone = ALLOWED_TONES.includes(rawTone as QuoteReelTone)
       ? (rawTone as QuoteReelTone)
       : "cinematic";
+
+    const rawVisualSource = normalizeTextInput(body.visualSource) as QuoteReelVisualSource | "";
+    const visualSource: QuoteReelVisualSource = ALLOWED_VISUAL_SOURCES.includes(
+      rawVisualSource as QuoteReelVisualSource,
+    )
+      ? (rawVisualSource as QuoteReelVisualSource)
+      : "auto";
 
     const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
 
@@ -195,6 +205,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
       quoteReelMeta: {
         mode,
         tone,
+        visualSource,
         sourceText: mode === "manual_text" ? rawText : undefined,
         scriptReviewRequired: true,
         scriptReviewApproved: false,

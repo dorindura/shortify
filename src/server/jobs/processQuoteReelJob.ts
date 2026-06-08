@@ -33,6 +33,7 @@ import type {
   QuoteReelMeta,
   QuoteReelMode,
   QuoteReelTone,
+  QuoteReelVisualSource,
   QuoteReelVoicePreset,
 } from "@/lib/jobsStore";
 
@@ -91,6 +92,10 @@ function isQuoteReelTone(value: unknown): value is QuoteReelTone {
   );
 }
 
+function isQuoteReelVisualSource(value: unknown): value is QuoteReelVisualSource {
+  return value === "auto" || value === "cartoons";
+}
+
 function isQuoteReelVoicePreset(value: unknown): value is QuoteReelVoicePreset {
   return (
     value === "dark_male" ||
@@ -135,6 +140,10 @@ export async function processQuoteReelJob(jobId: string) {
       ? existingMeta.tone
       : "cinematic";
 
+    const visualSource: QuoteReelVisualSource = isQuoteReelVisualSource(existingMeta.visualSource)
+      ? existingMeta.visualSource
+      : "auto";
+
     const captionStyle: CaptionStyle = isCaptionStyle(existingMeta.captionStyle)
       ? existingMeta.captionStyle
       : isCaptionStyle(job.caption_style)
@@ -175,6 +184,7 @@ export async function processQuoteReelJob(jobId: string) {
       ...existingMeta,
       mode,
       tone,
+      visualSource,
       captionsEnabled,
       captionStyle,
       captionPreset,
@@ -226,6 +236,7 @@ export async function processQuoteReelJob(jobId: string) {
       ...existingMeta,
       mode,
       tone,
+      visualSource,
       sourceText: scriptPlan.sourceText,
       generatedText: scriptPlan.generatedText,
       finalScript: scriptPlan.finalScript,
@@ -314,6 +325,7 @@ export async function processQuoteReelJob(jobId: string) {
         ...existingMeta,
         mode,
         tone,
+        visualSource,
         sourceText: scriptPlan.sourceText,
         generatedText: scriptPlan.generatedText,
         finalScript: scriptPlan.finalScript,
@@ -340,12 +352,14 @@ export async function processQuoteReelJob(jobId: string) {
     const assetPicks = await pickAssetsForQuoteReelSegments({
       segments: scriptPlan.segments,
       tone,
+      visualSource,
     });
 
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
       mode,
       tone,
+      visualSource,
       sourceText: scriptPlan.sourceText,
       generatedText: scriptPlan.generatedText,
       finalScript: scriptPlan.finalScript,
@@ -452,6 +466,7 @@ export async function processQuoteReelJob(jobId: string) {
       ...existingMeta,
       mode,
       tone,
+      visualSource,
       sourceText: scriptPlan.sourceText,
       generatedText: scriptPlan.generatedText,
       finalScript: scriptPlan.finalScript,
