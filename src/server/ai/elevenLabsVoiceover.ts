@@ -8,9 +8,7 @@ import type { CaptionDraftClip, QuoteReelTone } from "@lib/jobsStore";
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
 const TTS_DIR = path.join(process.cwd(), "tmp", "tts");
 
-const CAPTION_MAX_WORDS_PER_CHUNK = Number(
-  process.env.QUOTE_REEL_CAPTION_MAX_WORDS_PER_CHUNK ?? 4,
-);
+const CAPTION_MAX_WORDS_PER_CHUNK = Number(process.env.QUOTE_REEL_CAPTION_MAX_WORDS_PER_CHUNK ?? 4);
 
 const CAPTION_CHUNK_BREAK_GAP_SEC = Number(
   process.env.QUOTE_REEL_CAPTION_CHUNK_BREAK_GAP_SEC ?? 0.24,
@@ -84,10 +82,7 @@ function getOptionalEnvNumber(name: string) {
   return Number.isFinite(raw) ? raw : undefined;
 }
 
-function resolveVoiceSpeed(
-  preset: QuoteReelVoicePreset,
-  tone?: QuoteReelTone,
-) {
+function resolveVoiceSpeed(preset: QuoteReelVoicePreset, tone?: QuoteReelTone) {
   const envSpeed = getOptionalEnvNumber("ELEVENLABS_SPEED");
   if (envSpeed != null) return clamp(envSpeed, 0.85, 1);
 
@@ -107,17 +102,13 @@ function resolveVoiceSpeed(
 
   if (tone === "aggressive") speed += 0.03;
   if (tone === "calm") speed -= 0.03;
-  if (tone === "emotional") speed -= 0.02;
+  if (tone === "emotional") speed -= 0.07;
   if (tone === "stoic") speed -= 0.02;
 
   return clamp(speed, 0.85, 1);
 }
 
-function runCmd(
-  cmd: string,
-  args: string[],
-  logPrefix: string,
-): Promise<string> {
+function runCmd(cmd: string, args: string[], logPrefix: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args);
 
@@ -136,9 +127,9 @@ function runCmd(
 
     proc.on("close", (code) => {
       if (code === 0) resolve((stdout || stderr).trim());
-      else {reject(
-          new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`),
-        );}
+      else {
+        reject(new Error(`[${logPrefix}] ${cmd} exited with ${code}\n${stderr}`));
+      }
     });
   });
 }
@@ -196,8 +187,7 @@ function resolveVoiceIdFromPreset(preset: QuoteReelVoicePreset): string {
   const darkMale = process.env.ELEVENLABS_VOICE_DARK_MALE?.trim();
   const storyteller = process.env.ELEVENLABS_VOICE_STORYTELLER?.trim();
   const softFemale = process.env.ELEVENLABS_VOICE_SOFT_FEMALE?.trim();
-  const motivationalMale = process.env.ELEVENLABS_VOICE_MOTIVATIONAL_MALE
-    ?.trim();
+  const motivationalMale = process.env.ELEVENLABS_VOICE_MOTIVATIONAL_MALE?.trim();
   const neutral = process.env.ELEVENLABS_VOICE_NEUTRAL?.trim();
 
   const fallbackDeepMale = process.env.ELEVENLABS_VOICE_DEEP_MALE?.trim();
@@ -227,11 +217,7 @@ function resolveModelId(text: string): string {
   return countChars(text) <= 4800 ? "eleven_v3" : "eleven_multilingual_v2";
 }
 
-function buildVoiceSettings(
-  preset: QuoteReelVoicePreset,
-  tone?: QuoteReelTone,
-  modelId?: string,
-) {
+function buildVoiceSettings(preset: QuoteReelVoicePreset, tone?: QuoteReelTone, modelId?: string) {
   const isV3 = modelId === "eleven_v3";
 
   let stability = 0.5;
@@ -282,8 +268,7 @@ function buildVoiceSettings(
   }
 
   stability = getOptionalEnvNumber("ELEVENLABS_STABILITY") ?? stability;
-  similarityBoost = getOptionalEnvNumber("ELEVENLABS_SIMILARITY") ??
-    similarityBoost;
+  similarityBoost = getOptionalEnvNumber("ELEVENLABS_SIMILARITY") ?? similarityBoost;
   style = getOptionalEnvNumber("ELEVENLABS_STYLE") ?? style;
 
   return {
@@ -333,9 +318,7 @@ function isWordChar(char: string): boolean {
   return /[\p{L}\p{N}'’-]/u.test(char);
 }
 
-function buildWordTimingsFromAlignment(
-  alignment?: ElevenLabsAlignment,
-): WordTiming[] {
+function buildWordTimingsFromAlignment(alignment?: ElevenLabsAlignment): WordTiming[] {
   const characters = alignment?.characters ?? [];
   const starts = alignment?.character_start_times_seconds ?? [];
   const ends = alignment?.character_end_times_seconds ?? [];
@@ -416,12 +399,11 @@ function groupWordsIntoCaptionChunks(words: WordTiming[]): WordTiming[][] {
     const gapFromPrevious = previous ? word.startSec - previous.endSec : 0;
     const nextChunkDuration = first ? word.endSec - first.startSec : 0;
 
-    const shouldStartNewGroup = current.length > 0 &&
-      (
-        current.length >= maxWords ||
+    const shouldStartNewGroup =
+      current.length > 0 &&
+      (current.length >= maxWords ||
         gapFromPrevious >= breakGapSec ||
-        nextChunkDuration >= maxChunkDurationSec
-      );
+        nextChunkDuration >= maxChunkDurationSec);
 
     if (shouldStartNewGroup) {
       groups.push(current);
@@ -438,9 +420,7 @@ function groupWordsIntoCaptionChunks(words: WordTiming[]): WordTiming[][] {
   return groups;
 }
 
-function buildCaptionDraftFromWordTimings(
-  words: WordTiming[],
-): CaptionDraftClip | undefined {
+function buildCaptionDraftFromWordTimings(words: WordTiming[]): CaptionDraftClip | undefined {
   const cleanWords = words
     .map((word) => ({
       text: normalizeWhitespace(word.text),
@@ -518,9 +498,7 @@ function scaleCaptionDraftTiming(
   };
 }
 
-export async function fitVoiceoverToMaxDuration(
-  input: FitVoiceoverToDurationInput,
-): Promise<{
+export async function fitVoiceoverToMaxDuration(input: FitVoiceoverToDurationInput): Promise<{
   audioPath: string;
   durationSec: number;
   captionDraft?: CaptionDraftClip;
@@ -592,21 +570,14 @@ export async function generateVoiceoverFromText(
   const voicePreset = resolveDefaultPreset(input.voicePreset, input.tone);
   const voiceId = resolveVoiceIdFromPreset(voicePreset);
   const modelId = resolveModelId(normalizedText);
-  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT?.trim() ||
-    "mp3_44100_128";
+  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT?.trim() || "mp3_44100_128";
 
   await ensureDir(TTS_DIR);
 
   const audioPath = path.join(TTS_DIR, `${randomUUID()}.mp3`);
-  const requestText = maybeAddExpressiveDirectingTags(
-    normalizedText,
-    input.tone,
-    modelId,
-  );
+  const requestText = maybeAddExpressiveDirectingTags(normalizedText, input.tone, modelId);
 
-  const url = new URL(
-    `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/with-timestamps`,
-  );
+  const url = new URL(`${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/with-timestamps`);
   url.searchParams.set("output_format", outputFormat);
 
   const response = await fetch(url.toString(), {
