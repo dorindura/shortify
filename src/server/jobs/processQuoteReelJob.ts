@@ -14,12 +14,18 @@ import {
   buildQuoteReelPlanFromFinalScript,
   generateQuoteReelScriptPlan,
 } from "@/server/ai/quoteReelScriptGenerator";
-import { pickAssetsForQuoteReelSegments } from "@/server/assets/quoteReelVideoAssets";
+import {
+  listQuoteReelVideoAssets,
+  pickAssetsForQuoteReelSegments,
+} from "@/server/assets/quoteReelVideoAssets";
 import {
   fitVoiceoverToMaxDuration,
   generateVoiceoverFromText,
 } from "@/server/ai/elevenLabsVoiceover";
-import { assembleQuoteReel } from "@/server/video/quoteReelAssembly";
+import {
+  assembleCartoonQuoteReel,
+  assembleQuoteReel,
+} from "@/server/video/quoteReelAssembly";
 import {
   type CaptionDraftClip,
   generateCaptionDraftsForAudioFiles,
@@ -382,13 +388,22 @@ export async function processQuoteReelJob(jobId: string) {
 
     await dbUpdateJobStage(jobId, "assembling", 62);
 
-    const assembly = await assembleQuoteReel({
-      aspect: "vertical",
-      segments: scriptPlan.segments,
-      assetPicks,
-      voiceoverAudioPath,
-      targetDurationSec: actualTargetDurationSec,
-    });
+    const assembly =
+      visualSource === "cartoons"
+        ? await assembleCartoonQuoteReel({
+            cartoonClips: (await listQuoteReelVideoAssets("cartoons")).map(
+              (asset) => asset.assetPath,
+            ),
+            voiceoverAudioPath,
+            targetDurationSec: actualTargetDurationSec,
+          })
+        : await assembleQuoteReel({
+            aspect: "vertical",
+            segments: scriptPlan.segments,
+            assetPicks,
+            voiceoverAudioPath,
+            targetDurationSec: actualTargetDurationSec,
+          });
 
     cleanupExtraPaths.push(...assembly.cleanupPaths);
 

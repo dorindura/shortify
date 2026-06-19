@@ -412,6 +412,191 @@ function buildSegmentAssetMap(assetPicks: QuoteReelAssetPick[]) {
   return bySegmentId;
 }
 
+function shuffle<T>(items: T[]): T[] {
+  const copy = [...items];
+
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+
+  return copy;
+}
+
+// Full-frame cartoon fitted over a blurred fill of itself, scaled to the
+// vertical canvas. No per-pixel geq; only cheap native filters.
+function buildCartoonCanvasFilter(): string {
+  return [
+    `[0:v]split=2[bgsrc][fgsrc]`,
+    `[bgsrc]scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=increase:flags=bicubic,` +
+      `crop=${CANVAS_W}:${CANVAS_H},boxblur=24:2,eq=brightness=-0.06:saturation=1.05[bg]`,
+    `[fgsrc]scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=decrease:flags=lanczos[fg]`,
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=30,setsar=1,format=yuv420p,` +
+      `vignette=angle=PI/4.2,noise=alls=4[vout]`,
+  ].join(";");
+}
+
+async function normalizeCartoonClip(opts: {
+  inputPath: string;
+  outputPath: string;
+}): Promise<void> {
+  const args = [
+    "-y",
+    "-i",
+    opts.inputPath,
+    "-filter_complex",
+    buildCartoonCanvasFilter(),
+    "-map",
+    "[vout]",
+    "-an",
+    "-r",
+    "30",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "medium",
+    "-crf",
+    "18",
+    "-maxrate",
+    "10M",
+    "-bufsize",
+    "16M",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-threads",
+    ffThreads,
+    opts.outputPath,
+  ];
+
+  await runCmd("ffmpeg", args, "quoteReelAssembly:normalizeCartoonClip");
+}
+
+export type AssembleCartoonReelInput = {
+  cartoonClips: string[];
+  voiceoverAudioPath?: string;
+  targetDurationSec?: number;
+};
+
+/**
+ * Cartoon quote reels: instead of cutting a clip per script segment, play full
+ * cartoon videos picked at random, back to back, with no duplicates, until the
+ * voiceover (or target) duration is covered. The voiceover is laid on top.
+ */
+export async function assembleCartoonQuoteReel(
+  input: AssembleCartoonReelInput,
+): Promise<AssembleQuoteReelResult> {
+  const pool = input.cartoonClips ?? [];
+
+  if (!pool.length) {
+    throw new Error("assembleCartoonQuoteReel requires at least one cartoon clip");
+  }
+
+  await ensureDir(TMP_ROOT);
+
+  const workspaceId = randomUUID();
+  const workspaceRoot = path.join(TMP_ROOT, workspaceId);
+  const preparedDir = path.join(workspaceRoot, "prepared");
+  const outputDir = path.join(workspaceRoot, "output");
+
+  await ensureDir(preparedDir);
+  await ensureDir(outputDir);
+
+  const draftVideoPath = path.join(outputDir, "quote-reel-draft.mp4");
+  const finalVideoPath = path.join(outputDir, "quote-reel-final.mp4");
+  const thumbPath = path.join(outputDir, "quote-reel-thumb.jpg");
+
+  const cleanupPaths: string[] = [workspaceRoot];
+  const preparedSegments: PreparedSegment[] = [];
+
+  try {
+    const voiceoverDurationSec = input.voiceoverAudioPath
+      ? await probeDuration(input.voiceoverAudioPath)
+      : undefined;
+
+    // Cover a little past the audio so the video never ends before it.
+    const coverDurationSec = input.voiceoverAudioPath
+      ? (voiceoverDurationSec ?? input.targetDurationSec ?? 70) + 0.75
+      : (input.targetDurationSec ?? Number.POSITIVE_INFINITY);
+
+    // Random order, each cartoon used at most once (no duplicates).
+    const ordered = shuffle(pool);
+
+    let timelineCursorSec = 0;
+    let index = 0;
+
+    for (const clipPath of ordered) {
+      if (timelineCursorSec >= coverDurationSec) break;
+
+      const clipDuration = await probeDuration(clipPath);
+
+      const preparedPath = path.join(
+        preparedDir,
+        `${String(index).padStart(3, "0")}-${randomUUID()}.mp4`,
+      );
+
+      await normalizeCartoonClip({ inputPath: clipPath, outputPath: preparedPath });
+
+      preparedSegments.push({
+        segmentId: `cartoon-${index}`,
+        text: "",
+        assetPath: clipPath,
+        preparedPath,
+        durationSec: clipDuration,
+        timelineStartSec: timelineCursorSec,
+      });
+
+      timelineCursorSec += clipDuration;
+      index += 1;
+    }
+
+    if (!preparedSegments.length) {
+      throw new Error("No cartoon clips could be prepared");
+    }
+
+    await concatPreparedSegments({
+      inputPaths: preparedSegments.map((item) => item.preparedPath),
+      outputPath: draftVideoPath,
+    });
+
+    let outputVideoPath = draftVideoPath;
+
+    if (input.voiceoverAudioPath) {
+      await attachVoiceoverToVideo({
+        videoPath: draftVideoPath,
+        voiceoverAudioPath: input.voiceoverAudioPath,
+        outputPath: finalVideoPath,
+      });
+
+      outputVideoPath = finalVideoPath;
+    } else {
+      await fs.copyFile(draftVideoPath, finalVideoPath);
+      outputVideoPath = finalVideoPath;
+    }
+
+    const actualDurationSec = await probeDuration(outputVideoPath);
+
+    await createThumbnailFromVideo({
+      videoPath: outputVideoPath,
+      outputPath: thumbPath,
+      fallbackDurationSec: actualDurationSec,
+    });
+
+    return {
+      draftVideoPath,
+      finalVideoPath: outputVideoPath,
+      thumbPath,
+      cleanupPaths,
+      preparedSegments,
+      actualDurationSec,
+    };
+  } catch (error) {
+    await fs.rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 export async function assembleQuoteReel(
   input: AssembleQuoteReelInput,
 ): Promise<AssembleQuoteReelResult> {
