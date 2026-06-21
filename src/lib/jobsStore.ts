@@ -19,6 +19,7 @@ export type JobStage =
   | "assembling"
   | "review_ready"
   | "rendering"
+  | "poster"
   | "uploading"
   | "finished";
 
@@ -164,6 +165,12 @@ export type QuoteReelMeta = {
   musicSuggestions?: QuoteReelMusicSuggestion[];
 
   voiceover?: QuoteReelVoiceoverMeta;
+
+  // TikTok quote poster (optional extra output alongside the reel).
+  posterEnabled?: boolean;
+  posterQuote?: string;
+  posterUrl?: string;
+  posterImageCategory?: string;
 };
 
 export type SmartCropSegment = {

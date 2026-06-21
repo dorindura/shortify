@@ -95,6 +95,8 @@ type Props = {
   setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   voicePreset: LocalQuoteVoicePreset;
   setVoicePreset: (value: LocalQuoteVoicePreset) => void;
+  posterEnabled: boolean;
+  setPosterEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   targetDurationSec: number;
   setTargetDurationSec: (value: number) => void;
   minDurationSec: number;
@@ -173,6 +175,8 @@ export default function CreateJobPanel(props: Props) {
     setVoiceEnabled,
     voicePreset,
     setVoicePreset,
+    posterEnabled,
+    setPosterEnabled,
     targetDurationSec,
     setTargetDurationSec,
     minDurationSec,
@@ -398,6 +402,8 @@ export default function CreateJobPanel(props: Props) {
             setVoiceEnabled={setVoiceEnabled}
             voicePreset={voicePreset}
             setVoicePreset={setVoicePreset}
+            posterEnabled={posterEnabled}
+            setPosterEnabled={setPosterEnabled}
             targetDurationSec={targetDurationSec}
             setTargetDurationSec={setTargetDurationSec}
             minDurationSec={minDurationSec}

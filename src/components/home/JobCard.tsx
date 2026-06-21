@@ -221,6 +221,36 @@ export default function JobCard({
         </div>
       )}
 
+      {job.quoteReelMeta?.posterUrl && (
+        <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold text-slate-300">TikTok poster</div>
+            <a
+              href={job.quoteReelMeta.posterUrl}
+              download
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-slate-700 px-2 py-0.5 text-[9px] text-slate-300 hover:bg-slate-900"
+            >
+              Download
+            </a>
+          </div>
+          <a href={job.quoteReelMeta.posterUrl} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={job.quoteReelMeta.posterUrl}
+              alt={job.quoteReelMeta.posterQuote ?? "Quote poster"}
+              className="mt-2 w-28 rounded-md border border-slate-800"
+            />
+          </a>
+          {job.quoteReelMeta.posterQuote && (
+            <div className="mt-1 text-[10px] text-slate-400 italic">
+              “{job.quoteReelMeta.posterQuote}”
+            </div>
+          )}
+        </div>
+      )}
+
       {job.quoteReelMeta?.instagramCaption && (
         <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">
           <div className="flex items-center justify-between gap-2">

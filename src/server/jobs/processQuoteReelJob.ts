@@ -26,6 +26,7 @@ import {
   assembleCartoonQuoteReel,
   assembleQuoteReel,
 } from "@/server/video/quoteReelAssembly";
+import { generateQuoteReelPoster } from "@/server/video/quoteReelPoster";
 import {
   type CaptionDraftClip,
   generateCaptionDraftsForAudioFiles,
@@ -165,6 +166,9 @@ export async function processQuoteReelJob(jobId: string) {
 
     const voiceEnabled =
       typeof existingMeta.voiceEnabled === "boolean" ? existingMeta.voiceEnabled : true;
+
+    const posterEnabled =
+      typeof existingMeta.posterEnabled === "boolean" ? existingMeta.posterEnabled : false;
 
     const voicePreset: QuoteReelVoicePreset = isQuoteReelVoicePreset(existingMeta.voicePreset)
       ? existingMeta.voicePreset
@@ -475,6 +479,36 @@ export async function processQuoteReelJob(jobId: string) {
       `jobs/${jobId}/quote-reel-thumb${thumbExt}`,
     );
 
+    let posterUrl: string | undefined;
+    let posterQuote: string | undefined;
+    let posterImageCategory: string | undefined;
+
+    if (posterEnabled) {
+      try {
+        await dbUpdateJobStage(jobId, "poster", 96);
+
+        const poster = await generateQuoteReelPoster({
+          tone,
+          script: scriptPlan.finalScript,
+          topic: mode === "ai_text" ? prompt : undefined,
+        });
+
+        cleanupExtraPaths.push(...poster.cleanupPaths);
+
+        const uploadedPoster = await uploadLocalFileToStorage(
+          poster.posterPath,
+          `jobs/${jobId}/quote-reel-poster.jpg`,
+        );
+
+        posterUrl = uploadedPoster.publicUrl;
+        posterQuote = poster.quote;
+        posterImageCategory = poster.imageCategory;
+      } catch (posterError) {
+        // A poster failure should never fail the whole reel job.
+        console.error("[processQuoteReelJob] Poster generation failed:", posterError);
+      }
+    }
+
     await dbSetJobCaptionedResults(jobId, [uploadedVideo.publicUrl], [uploadedThumb.publicUrl]);
 
     await dbUpdateJobQuoteMeta(jobId, {
@@ -500,6 +534,10 @@ export async function processQuoteReelJob(jobId: string) {
       hashtags: scriptPlan.hashtags,
       musicSuggestions: scriptPlan.musicSuggestions,
       voiceover: voiceoverMetaPatch,
+      posterEnabled,
+      posterUrl,
+      posterQuote,
+      posterImageCategory,
     });
 
     await dbUpdateJobStage(jobId, "finished", 100);

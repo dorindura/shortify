@@ -86,6 +86,7 @@ export default function HomePageClient() {
   const [quoteText, setQuoteText] = useState("");
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
+  const [posterEnabled, setPosterEnabled] = useState(false);
   const [quoteCaptionPreset, setQuoteCaptionPreset] = useState<LocalQuoteCaptionPreset>(
     "card_bottom_premium_karaoke",
   );
@@ -323,6 +324,7 @@ export default function HomePageClient() {
               captionPreset: quoteCaptionPreset,
               voiceEnabled,
               voicePreset,
+              posterEnabled,
               targetDurationSec,
               minDurationSec,
               maxDurationSec,
@@ -337,6 +339,7 @@ export default function HomePageClient() {
               captionPreset: quoteCaptionPreset,
               voiceEnabled,
               voicePreset,
+              posterEnabled,
               targetDurationSec,
               minDurationSec,
               maxDurationSec,
@@ -815,6 +818,8 @@ export default function HomePageClient() {
             setVoiceEnabled={setVoiceEnabled}
             voicePreset={voicePreset}
             setVoicePreset={setVoicePreset}
+            posterEnabled={posterEnabled}
+            setPosterEnabled={setPosterEnabled}
             targetDurationSec={targetDurationSec}
             setTargetDurationSec={setTargetDurationSec}
             minDurationSec={minDurationSec}

@@ -22,6 +22,8 @@ type Props = {
   setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   voicePreset: LocalQuoteVoicePreset;
   setVoicePreset: (value: LocalQuoteVoicePreset) => void;
+  posterEnabled: boolean;
+  setPosterEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   targetDurationSec: number;
   setTargetDurationSec: (value: number) => void;
   minDurationSec: number;
@@ -52,6 +54,8 @@ export default function QuoteReelSection({
   setVoiceEnabled,
   voicePreset,
   setVoicePreset,
+  posterEnabled,
+  setPosterEnabled,
   targetDurationSec,
   setTargetDurationSec,
   minDurationSec,
@@ -351,6 +355,32 @@ export default function QuoteReelSection({
           <span
             className={`inline-block h-4 w-4 rounded-full bg-slate-100 shadow transition ${
               voiceEnabled ? "translate-x-4" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+        <div>
+          <div className="text-[11px] font-medium text-slate-200">TikTok quote poster</div>
+          <div className="mt-0.5 text-[10px] text-slate-500">
+            Also generate a vertical poster image: an AI quote on a tone-matched photo, ready to
+            post as a TikTok story.
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setPosterEnabled((prev) => !prev)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
+            posterEnabled
+              ? "border-emerald-400 bg-emerald-500/20"
+              : "border-slate-600 bg-slate-800/80"
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 rounded-full bg-slate-100 shadow transition ${
+              posterEnabled ? "translate-x-4" : "translate-x-0.5"
             }`}
           />
         </button>

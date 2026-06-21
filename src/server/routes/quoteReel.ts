@@ -131,6 +131,8 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
 
     const voiceEnabled = typeof body.voiceEnabled === "boolean" ? body.voiceEnabled : true;
 
+    const posterEnabled = typeof body.posterEnabled === "boolean" ? body.posterEnabled : false;
+
     const rawVoicePreset = normalizeTextInput(body.voicePreset) as QuoteReelVoicePreset | "";
     const voicePreset: QuoteReelVoicePreset = ALLOWED_VOICE_PRESETS.includes(
       rawVoicePreset as QuoteReelVoicePreset,
@@ -218,6 +220,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
         captionPreset,
         voiceEnabled,
         voicePreset,
+        posterEnabled,
         musicSuggestions: [],
         voiceover: {
           enabled: voiceEnabled,
