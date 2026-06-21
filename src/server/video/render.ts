@@ -28,6 +28,8 @@ type TextOverlay = {
   emojiPlacement?: OverlayEmojiPlacement;
 };
 
+type RenderQualityPreset = "standard" | "premium" | "socialPremium";
+
 type RenderOptions = {
   aspect?: JobAspect;
   style?: CaptionStyle;
@@ -35,6 +37,9 @@ type RenderOptions = {
   smartCrop?: (SmartCropBox | null)[];
   textOverlays?: TextOverlay[];
   blackAndWhite?: boolean;
+  qualityPreset?: RenderQualityPreset;
+  fadeOutSec?: number;
+  normalizeAudio?: boolean;
 };
 
 async function ensureDir(dir: string) {
@@ -62,11 +67,133 @@ function runFfmpeg(args: string[], logPrefix: string): Promise<void> {
   });
 }
 
+function probeDuration(mediaPath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      mediaPath,
+    ]);
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on("error", reject);
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe exited with code ${code}\n${stderr}`));
+        return;
+      }
+
+      const duration = Number.parseFloat(stdout.trim());
+
+      if (!Number.isFinite(duration) || duration <= 0) {
+        reject(new Error(`Could not probe duration for ${mediaPath}`));
+        return;
+      }
+
+      resolve(duration);
+    });
+  });
+}
+
 function escapeForSubtitles(pathStr: string): string {
   return pathStr
     .replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'");
+}
+
+function getRenderQualityArgs(
+  preset: RenderQualityPreset = "standard",
+): string[] {
+  if (preset === "socialPremium") {
+    return [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "23",
+      "-maxrate",
+      "3.5M",
+      "-bufsize",
+      "5M",
+      "-pix_fmt",
+      "yuv420p",
+    ];
+  }
+
+  if (preset === "premium") {
+    return [
+      "-c:v",
+      "libx264",
+      "-preset",
+      "slow",
+      "-crf",
+      "18",
+      "-maxrate",
+      "8M",
+      "-bufsize",
+      "12M",
+      "-pix_fmt",
+      "yuv420p",
+    ];
+  }
+
+  return [
+    "-c:v",
+    "libx264",
+    "-preset",
+    "superfast",
+    "-crf",
+    "24",
+    "-maxrate",
+    "4M",
+    "-bufsize",
+    "7M",
+    "-pix_fmt",
+    "yuv420p",
+  ];
+}
+
+function buildFadeFilters(
+  fadeOutSec: number | undefined,
+  mediaDurationSec: number,
+): { video: string | null; audio: string | null } {
+  const duration = Number(fadeOutSec);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return { video: null, audio: null };
+  }
+
+  const safeFadeDuration = Math.min(
+    duration,
+    Math.max(0.2, mediaDurationSec - 0.1),
+  );
+  const startAt = Math.max(0, mediaDurationSec - safeFadeDuration);
+
+  return {
+    video: `fade=t=out:st=${startAt.toFixed(2)}:d=${
+      safeFadeDuration.toFixed(2)
+    }`,
+    audio: `afade=t=out:st=${startAt.toFixed(2)}:d=${
+      safeFadeDuration.toFixed(2)
+    }`,
+  };
 }
 
 function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
@@ -195,7 +322,7 @@ export async function renderPreviewClips(
 
     if (aspect === "verticalLetterbox") {
       filters.push(
-        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "scale=-2:1440:flags=bicubic,crop=1080:1440:(in_w-1080)/2:0,pad=1080:1920:0:(1920-1440)/2:black",
       );
     } else if (aspect === "vertical") {
       const cropInfo = opts?.smartCrop?.[i] ?? null;
@@ -312,7 +439,7 @@ export async function renderShortsWithSubtitles(
 
     if (aspect === "verticalLetterbox") {
       baseFilters.push(
-        "scale=1080:1920:force_original_aspect_ratio=decrease:flags=bicubic,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "scale=-2:1440:flags=bicubic,crop=1080:1440:(in_w-1080)/2:0,pad=1080:1920:0:(1920-1440)/2:black",
       );
     }
 
@@ -336,6 +463,20 @@ export async function renderShortsWithSubtitles(
     if (subtitlesFilter) {
       baseFilters.push(subtitlesFilter);
     }
+
+    const mediaDurationSec = opts?.fadeOutSec
+      ? await probeDuration(clipPath)
+      : 0;
+    const fadeFilters = buildFadeFilters(opts?.fadeOutSec, mediaDurationSec);
+
+    if (fadeFilters.video) {
+      baseFilters.push(fadeFilters.video);
+    }
+
+    const audioFilters = [
+      opts?.normalizeAudio ? "loudnorm=I=-16:TP=-1.5:LRA=11" : null,
+      fadeFilters.audio,
+    ].filter((filter): filter is string => !!filter);
 
     const overlaysForClip = (opts?.textOverlays ?? []).filter(
       (overlay) => overlay.clipIndex === i,
@@ -371,20 +512,16 @@ export async function renderShortsWithSubtitles(
       finalLabel,
       "-map",
       "0:a?",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "superfast",
-      "-crf",
-      "24",
-      "-maxrate",
-      "4M",
-      "-bufsize",
-      "7M",
+      ...getRenderQualityArgs(opts?.qualityPreset),
       "-c:a",
       "aac",
       "-b:a",
-      "128k",
+      opts?.qualityPreset === "premium"
+        ? "192k"
+        : opts?.qualityPreset === "socialPremium"
+          ? "160k"
+          : "128k",
+      ...(audioFilters.length ? ["-af", audioFilters.join(",")] : []),
       "-threads",
       ffThreads,
       "-movflags",
@@ -408,6 +545,8 @@ export async function renderShortsWithSubtitles(
         "-i",
         outVideoPath,
         "-vframes",
+        "1",
+        "-update",
         "1",
         "-q:v",
         "2",

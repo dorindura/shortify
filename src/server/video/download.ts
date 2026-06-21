@@ -5,6 +5,9 @@ import { randomUUID } from "crypto";
 
 type CmdResult = { stdout: string; stderr: string };
 
+const MIN_DOWNLOAD_HEIGHT = 720;
+const PREFERRED_MAX_DOWNLOAD_HEIGHT = 1080;
+
 function runCommand(file: string, args: string[]): Promise<CmdResult> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -49,7 +52,17 @@ function shouldRetryWithCookies(errMsg: string) {
     m.includes("unavailable") ||
     m.includes("this video is not available") ||
     m.includes("consent") ||
-    m.includes("watch this video") // uneori apare în mesaje de access
+    m.includes("watch this video") || // uneori apare în mesaje de access
+    looksLikeMissingFormatsFromChallenge(m)
+  );
+}
+
+function looksLikeMissingFormatsFromChallenge(errMsg: string) {
+  return (
+    errMsg.includes("requested format is not available") ||
+    errMsg.includes("n challenge solving failed") ||
+    errMsg.includes("sabr-only streaming experiment") ||
+    errMsg.includes("some formats may be missing")
   );
 }
 
@@ -67,6 +80,41 @@ function looksLikeCookiesPoisoned(errMsg: string) {
 function shorten(s: string, n = 300) {
   if (!s) return "";
   return s.length > n ? s.slice(0, n) + "..." : s;
+}
+
+function getErrorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function buildDownloadFailureMessage(lastErr: unknown) {
+  const msg = getErrorMessage(lastErr);
+
+  if (looksLikeMissingFormatsFromChallenge(msg.toLowerCase())) {
+    return [
+      "Download failed because yt-dlp could not see a 720p+ YouTube format.",
+      "The local yt-dlp/EJS challenge solver is likely outdated; update yt-dlp and restart the worker.",
+      `Last error: ${msg}`,
+    ].join(" ");
+  }
+
+  return `Download failed; final mp4 not found. Last error: ${msg}`;
+}
+
+async function probeVideoHeight(filePath: string): Promise<number | null> {
+  const { stdout } = await runCommand("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=height",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    filePath,
+  ]);
+
+  const height = Number.parseInt(stdout.trim(), 10);
+  return Number.isFinite(height) && height > 0 ? height : null;
 }
 
 export async function downloadVideoFromUrl(url: string): Promise<string> {
@@ -89,8 +137,15 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
     "youtube:player_client=default,-android_sdkless",
   ];
 
-  // Format: încearcă DASH high quality, dar are fallback la 18 (progressive mp4)
-  const format = `bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/18/best[ext=mp4]/best`;
+  const format = [
+    `bestvideo[vcodec^=avc1][height<=${PREFERRED_MAX_DOWNLOAD_HEIGHT}][height>=${MIN_DOWNLOAD_HEIGHT}]+bestaudio[ext=m4a]`,
+    `bestvideo[ext=mp4][height<=${PREFERRED_MAX_DOWNLOAD_HEIGHT}][height>=${MIN_DOWNLOAD_HEIGHT}]+bestaudio[ext=m4a]`,
+    `bestvideo[height<=${PREFERRED_MAX_DOWNLOAD_HEIGHT}][height>=${MIN_DOWNLOAD_HEIGHT}]+bestaudio`,
+    `best[ext=mp4][height<=${PREFERRED_MAX_DOWNLOAD_HEIGHT}][height>=${MIN_DOWNLOAD_HEIGHT}]`,
+    `best[height<=${PREFERRED_MAX_DOWNLOAD_HEIGHT}][height>=${MIN_DOWNLOAD_HEIGHT}]`,
+    `bestvideo[height>=${MIN_DOWNLOAD_HEIGHT}]+bestaudio`,
+    `best[height>=${MIN_DOWNLOAD_HEIGHT}]`,
+  ].join("/");
 
   const baseArgs = [
     ...stableYouTubeArgs,
@@ -127,14 +182,14 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
     }
   }
 
-  let lastErr: any = null;
+  let lastErr: unknown = null;
 
   // Attempt 1: fără cookies (default)
   try {
     await attempt("no-cookies-1", false);
-  } catch (err: any) {
+  } catch (err: unknown) {
     lastErr = err;
-    const msg = String(err?.message ?? err);
+    const msg = getErrorMessage(err);
 
     console.error("[downloadVideoFromUrl] no-cookies-1 failed:", msg);
 
@@ -143,9 +198,9 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
       // Attempt 2: cu cookies
       try {
         await attempt("with-cookies", true);
-      } catch (err2: any) {
+      } catch (err2: unknown) {
         lastErr = err2;
-        const msg2 = String(err2?.message ?? err2);
+        const msg2 = getErrorMessage(err2);
 
         console.error("[downloadVideoFromUrl] with-cookies failed:", msg2);
 
@@ -157,7 +212,7 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
           );
           try {
             await attempt("no-cookies-2", false);
-          } catch (err3: any) {
+          } catch (err3: unknown) {
             lastErr = err3;
           }
         }
@@ -169,8 +224,20 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
   try {
     await fs.access(finalPath);
     const stats = await fs.stat(finalPath);
+    const height = await probeVideoHeight(finalPath);
+
+    if (height == null) {
+      throw new Error("Download finished, but could not verify video resolution.");
+    }
+
+    if (height < MIN_DOWNLOAD_HEIGHT) {
+      throw new Error(
+        `Downloaded video is only ${height}p; expected at least ${MIN_DOWNLOAD_HEIGHT}p.`,
+      );
+    }
+
     console.log(
-      `[downloadVideoFromUrl] File created: ${finalPath} (${(stats.size / 1024 / 1024).toFixed(
+      `[downloadVideoFromUrl] File created: ${finalPath} (${height}p, ${(stats.size / 1024 / 1024).toFixed(
         2,
       )} MB)`,
     );
@@ -178,8 +245,6 @@ export async function downloadVideoFromUrl(url: string): Promise<string> {
   } catch {
     const files = await fs.readdir(baseDir).catch(() => []);
     console.error(`[downloadVideoFromUrl] Content of ${baseDir}:`, files);
-    throw new Error(
-      `Download failed; final mp4 not found. Last error: ${lastErr?.message ?? lastErr}`,
-    );
+    throw new Error(buildDownloadFailureMessage(lastErr));
   }
 }

@@ -12,11 +12,20 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteCaptionPreset,
+  LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVisualSource,
+  LocalQuoteVoicePreset,
+  LocalShortsOutputMode,
   LocalShortsSelectionMode,
+  MultiSourceInput,
+  MultiSourceSegmentDraft,
 } from "./home.types";
-import { buildCustomRangesPayload } from "./home.utils";
+import { buildCustomRangesPayload, buildMultiSourceSegmentsPayload } from "./home.utils";
 import JobReviewPanel from "@/components/home/review/JobReviewPanel";
+import MultiSourceReviewPanel from "@/components/home/review/MultiSourceReviewPanel";
+import QuoteReelScriptReviewPanel from "@/components/home/review/QuoteReelScriptReviewPanel";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const supabase = supabaseBrowser();
@@ -51,8 +60,10 @@ export default function HomePageClient() {
   const [url, setUrl] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [uploadInputResetKey, setUploadInputResetKey] = useState(0);
 
-  const [aspect, setAspect] = useState<LocalJobAspect>("horizontal");
+  const [aspect, setAspect] = useState<LocalJobAspect>("vertical");
   const [clipDurationSec, setClipDurationSec] = useState<number>(30);
   const [maxClips, setMaxClips] = useState<number>(3);
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);
@@ -70,13 +81,37 @@ export default function HomePageClient() {
 
   const [quotePrompt, setQuotePrompt] = useState("");
   const [quoteTone, setQuoteTone] = useState<LocalQuoteTone>("cinematic");
+  const [quoteMode, setQuoteMode] = useState<LocalQuoteReelMode>("ai_text");
+  const [quoteVisualSource, setQuoteVisualSource] = useState<LocalQuoteVisualSource>("auto");
+  const [quoteText, setQuoteText] = useState("");
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
+  const [posterEnabled, setPosterEnabled] = useState(false);
+  const [quoteCaptionPreset, setQuoteCaptionPreset] = useState<LocalQuoteCaptionPreset>(
+    "card_bottom_premium_karaoke",
+  );
+  const [targetDurationSec, setTargetDurationSec] = useState(70);
+  const [minDurationSec, setMinDurationSec] = useState(60);
+  const [maxDurationSec, setMaxDurationSec] = useState(95);
 
   const [selectionMode, setSelectionMode] = useState<LocalShortsSelectionMode>("auto");
+  const [shortsOutputMode, setShortsOutputMode] = useState<LocalShortsOutputMode>("shorts");
+  const [showLocalOutputModes, setShowLocalOutputModes] = useState(false);
   const [customRanges, setCustomRanges] = useState<CustomRange[]>([
-    { id: crypto.randomUUID(), startSec: "", endSec: "" },
+    {
+      id: crypto.randomUUID(),
+      ranges: [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+    },
   ]);
 
+  const [multiSourceInputs, setMultiSourceInputs] = useState<MultiSourceInput[]>([
+    { id: crypto.randomUUID(), url: "" },
+  ]);
+
+  const [multiSourceSegments, setMultiSourceSegments] = useState<MultiSourceSegmentDraft[]>([]);
+
   const isQuoteReel = jobGoal === "quote_reel";
+  const isMultiSourceEdit = jobGoal === "multi_source_edit";
 
   const hasActiveJobs =
     Array.isArray(jobs) && jobs.some((j) => j.status === "pending" || j.status === "processing");
@@ -98,24 +133,146 @@ export default function HomePageClient() {
         : "TikTok / Reels / Shorts (black bars)";
 
   const validCustomRangesCount = buildCustomRangesPayload(customRanges).length;
+  const validMultiSourceSegmentsCount = buildMultiSourceSegmentsPayload(
+    multiSourceInputs,
+    multiSourceSegments,
+  ).length;
 
   const reviewJob = jobs.find((job) => job.id === reviewJobId) ?? null;
+  const reviewJobHasQuoteReelScript =
+    (reviewJob?.quoteReelMeta?.finalScript ?? "").trim().length >= 20;
+  const isQuoteReelScriptReviewJob =
+    reviewJob?.jobGoal === "quote_reel" &&
+    (reviewJob.reviewReady ||
+      (reviewJob.status === "pending" &&
+        reviewJob.stage === "queued" &&
+        reviewJobHasQuoteReelScript));
 
-  function addCustomRange() {
-    setCustomRanges((prev) => [...prev, { id: crypto.randomUUID(), startSec: "", endSec: "" }]);
+  function createEmptyCustomClip(): CustomRange {
+    return {
+      id: crypto.randomUUID(),
+      ranges: [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+    };
   }
 
-  function updateCustomRange(id: string, field: "startSec" | "endSec", value: string) {
+  function addCustomClip() {
+    setCustomRanges((prev) => [...prev, createEmptyCustomClip()]);
+  }
+
+  function removeCustomClip(clipId: string) {
+    setCustomRanges((prev) => {
+      const next = prev.filter((clip) => clip.id !== clipId);
+      return next.length ? next : [createEmptyCustomClip()];
+    });
+  }
+
+  function addCustomRange(clipId: string) {
     setCustomRanges((prev) =>
-      prev.map((range) => (range.id === id ? { ...range, [field]: value } : range)),
+      prev.map((clip) =>
+        clip.id === clipId
+          ? {
+              ...clip,
+              ranges: [...clip.ranges, { id: crypto.randomUUID(), startSec: "", endSec: "" }],
+            }
+          : clip,
+      ),
     );
   }
 
-  function removeCustomRange(id: string) {
+  function removeCustomRange(clipId: string, rangeId: string) {
     setCustomRanges((prev) => {
-      const next = prev.filter((range) => range.id !== id);
-      return next.length ? next : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }];
+      return prev.map((clip) => {
+        if (clip.id !== clipId) return clip;
+        const nextRanges = clip.ranges.filter((range) => range.id !== rangeId);
+
+        return {
+          ...clip,
+          ranges: nextRanges.length
+            ? nextRanges
+            : [{ id: crypto.randomUUID(), startSec: "", endSec: "" }],
+        };
+      });
     });
+  }
+
+  function updateCustomRange(
+    clipId: string,
+    rangeId: string,
+    field: "startSec" | "endSec",
+    value: string,
+  ) {
+    setCustomRanges((prev) =>
+      prev.map((clip) =>
+        clip.id === clipId
+          ? {
+              ...clip,
+              ranges: clip.ranges.map((range) =>
+                range.id === rangeId ? { ...range, [field]: value } : range,
+              ),
+            }
+          : clip,
+      ),
+    );
+  }
+
+  function addMultiSourceInput() {
+    setMultiSourceInputs((prev) => {
+      if (prev.length >= 5) return prev;
+      return [...prev, { id: crypto.randomUUID(), url: "" }];
+    });
+  }
+
+  function removeMultiSourceInput(id: string) {
+    setMultiSourceInputs((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return next.length ? next : [{ id: crypto.randomUUID(), url: "" }];
+    });
+
+    setMultiSourceSegments((prev) => prev.filter((segment) => segment.sourceId !== id));
+  }
+
+  function changeMultiSourceUrl(id: string, value: string) {
+    setMultiSourceInputs((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, url: value } : item)),
+    );
+  }
+
+  function addMultiSourceSegment(sourceId: string) {
+    setMultiSourceSegments((prev) => {
+      const nextOrder = prev.length;
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sourceId,
+          startSec: "",
+          endSec: "",
+          order: nextOrder,
+        },
+      ];
+    });
+  }
+
+  function removeMultiSourceSegment(id: string) {
+    setMultiSourceSegments((prev) =>
+      prev
+        .filter((segment) => segment.id !== id)
+        .map((segment, index) => ({
+          ...segment,
+          order: index,
+        })),
+    );
+  }
+
+  function changeMultiSourceSegment(id: string, field: "startSec" | "endSec", value: string) {
+    setMultiSourceSegments((prev) =>
+      prev.map((segment) => (segment.id === id ? { ...segment, [field]: value } : segment)),
+    );
+  }
+
+  function resetMultiSourceEditState() {
+    setMultiSourceInputs([{ id: crypto.randomUUID(), url: "" }]);
+    setMultiSourceSegments([]);
   }
 
   function openReview(job: Job) {
@@ -149,18 +306,48 @@ export default function HomePageClient() {
   }
 
   async function createQuoteReelJob() {
-    if (!quotePrompt.trim()) return;
+    const canSubmit = quoteMode === "manual_text" ? !!quoteText.trim() : !!quotePrompt.trim();
+
+    if (!canSubmit) return;
 
     setLoading(true);
     try {
+      const payload =
+        quoteMode === "manual_text"
+          ? {
+              mode: quoteMode,
+              text: quoteText,
+              tone: quoteTone,
+              visualSource: quoteVisualSource,
+              captionsEnabled,
+              captionStyle,
+              captionPreset: quoteCaptionPreset,
+              voiceEnabled,
+              voicePreset,
+              posterEnabled,
+              targetDurationSec,
+              minDurationSec,
+              maxDurationSec,
+            }
+          : {
+              mode: quoteMode,
+              prompt: quotePrompt,
+              tone: quoteTone,
+              visualSource: quoteVisualSource,
+              captionsEnabled,
+              captionStyle,
+              captionPreset: quoteCaptionPreset,
+              voiceEnabled,
+              voicePreset,
+              posterEnabled,
+              targetDurationSec,
+              minDurationSec,
+              maxDurationSec,
+            };
+
       const res = await authedJsonFetch(`${API}/api/quote-reel`, {
         method: "POST",
-        body: JSON.stringify({
-          prompt: quotePrompt,
-          tone: quoteTone,
-          captionsEnabled,
-          captionStyle,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 402) {
@@ -172,7 +359,7 @@ export default function HomePageClient() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setPaywallMessage(data?.error ?? "Failed to create Quote Reel.");
+        setPaywallMessage(data?.error ?? "Failed to create AI Story Reel.");
         setShowUpgrade(false);
         return;
       }
@@ -180,6 +367,48 @@ export default function HomePageClient() {
       setPaywallMessage(null);
       setShowUpgrade(false);
       setQuotePrompt("");
+      setQuoteText("");
+      await fetchJobs();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createMultiSourceEditJob() {
+    const segments = buildMultiSourceSegmentsPayload(multiSourceInputs, multiSourceSegments);
+
+    if (!segments.length) {
+      alert("Please add at least one valid multi-source segment.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await authedJsonFetch(`${API}/api/multi-source-edit`, {
+        method: "POST",
+        body: JSON.stringify({
+          aspect,
+          segments,
+        }),
+      });
+
+      if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Free limit reached. Upgrade to continue.");
+        setShowUpgrade(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to create multi-source edit.");
+        setShowUpgrade(false);
+        return;
+      }
+
+      setPaywallMessage(null);
+      setShowUpgrade(false);
+      resetMultiSourceEditState();
       await fetchJobs();
     } finally {
       setLoading(false);
@@ -191,6 +420,16 @@ export default function HomePageClient() {
 
     if (jobGoal === "quote_reel") {
       await createQuoteReelJob();
+      return;
+    }
+
+    if (jobGoal === "multi_source_edit") {
+      await createMultiSourceEditJob();
+      return;
+    }
+
+    if (selectedUploadFile) {
+      await createUploadJob(selectedUploadFile);
       return;
     }
 
@@ -208,6 +447,7 @@ export default function HomePageClient() {
           captionsEnabled,
           captionStyle,
           jobGoal,
+          outputMode: showLocalOutputModes ? shortsOutputMode : "shorts",
           summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
           selectionMode,
           customRanges: selectionMode === "custom" ? buildCustomRangesPayload(customRanges) : [],
@@ -237,18 +477,15 @@ export default function HomePageClient() {
     }
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function createUploadJob(file: File) {
     const formData = new FormData();
-    formData.append("file", file);
     formData.append("aspect", aspect);
     formData.append("clipDurationSec", String(clipDurationSec));
     formData.append("maxClips", String(maxClips));
     formData.append("captionsEnabled", String(captionsEnabled));
     formData.append("captionStyle", captionStyle);
     formData.append("jobGoal", jobGoal);
+    formData.append("outputMode", showLocalOutputModes ? shortsOutputMode : "shorts");
     formData.append("selectionMode", selectionMode);
 
     if (selectionMode === "custom") {
@@ -258,6 +495,8 @@ export default function HomePageClient() {
     if (jobGoal === "summary") {
       formData.append("summaryTargetSec", String(summaryTargetSec));
     }
+
+    formData.append("file", file);
 
     setLoading(true);
     try {
@@ -282,11 +521,26 @@ export default function HomePageClient() {
 
       setPaywallMessage(null);
       setShowUpgrade(false);
-      e.target.value = "";
+      setSelectedUploadFile(null);
+      setUploadInputResetKey((prev) => prev + 1);
       await fetchJobs();
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSelectedUploadFile(file);
+    setPaywallMessage(null);
+    setShowUpgrade(false);
+  }
+
+  function clearSelectedUploadFile() {
+    setSelectedUploadFile(null);
+    setUploadInputResetKey((prev) => prev + 1);
   }
 
   async function handleManageBilling() {
@@ -377,6 +631,11 @@ export default function HomePageClient() {
   }, []);
 
   useEffect(() => {
+    const hostname = window.location.hostname;
+    setShowLocalOutputModes(hostname === "localhost" || hostname === "127.0.0.1");
+  }, []);
+
+  useEffect(() => {
     if (!hasActiveJobs) return;
 
     const intervalId = setInterval(
@@ -425,6 +684,12 @@ export default function HomePageClient() {
     setSelectionMode("auto");
   }, [isQuoteReel]);
 
+  useEffect(() => {
+    if (!isMultiSourceEdit) return;
+    setUrl("");
+    setSelectionMode("auto");
+  }, [isMultiSourceEdit]);
+
   if (authLoading || !user) return <div className="p-6">Loading...</div>;
 
   return (
@@ -443,7 +708,8 @@ export default function HomePageClient() {
                 </h1>
               </div>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Auto-clipped shorts, AI summaries, and cinematic Quote Reels in one place.
+                Auto-clipped shorts, AI summaries, quote reels, and manual timeline edits in one
+                place.
               </p>
             </div>
           </div>
@@ -492,9 +758,15 @@ export default function HomePageClient() {
             startCheckout={startCheckout}
             handleUrlSubmit={handleUrlSubmit}
             handleFileChange={handleFileChange}
+            selectedUploadFileName={selectedUploadFile?.name ?? null}
+            uploadInputResetKey={uploadInputResetKey}
+            clearSelectedUploadFile={clearSelectedUploadFile}
             isQuoteReel={isQuoteReel}
             aspect={aspect}
             setAspect={setAspect}
+            shortsOutputMode={shortsOutputMode}
+            setShortsOutputMode={setShortsOutputMode}
+            showLocalOutputModes={showLocalOutputModes}
             optimizedLabel={optimizedLabel}
             jobGoal={jobGoal}
             setJobGoal={setJobGoal}
@@ -504,9 +776,11 @@ export default function HomePageClient() {
             selectionMode={selectionMode}
             setSelectionMode={setSelectionMode}
             customRanges={customRanges}
-            onAddRange={addCustomRange}
-            onRemoveRange={removeCustomRange}
-            onChangeRange={updateCustomRange}
+            onAddCustomClip={addCustomClip}
+            onRemoveCustomClip={removeCustomClip}
+            onAddCustomRange={addCustomRange}
+            onRemoveCustomRange={removeCustomRange}
+            onChangeCustomRange={updateCustomRange}
             validCustomRangesCount={validCustomRangesCount}
             clipDurationSec={clipDurationSec}
             setClipDurationSec={setClipDurationSec}
@@ -516,11 +790,42 @@ export default function HomePageClient() {
             setQuotePrompt={setQuotePrompt}
             quoteTone={quoteTone}
             setQuoteTone={setQuoteTone}
+            quoteVisualSource={quoteVisualSource}
+            setQuoteVisualSource={setQuoteVisualSource}
             createQuoteReelJob={createQuoteReelJob}
             captionsEnabled={captionsEnabled}
             setCaptionsEnabled={setCaptionsEnabled}
             captionStyle={captionStyle}
             setCaptionStyle={setCaptionStyle}
+            isMultiSourceEdit={isMultiSourceEdit}
+            multiSourceInputs={multiSourceInputs}
+            multiSourceSegments={multiSourceSegments}
+            onAddMultiSourceInput={addMultiSourceInput}
+            onRemoveMultiSourceInput={removeMultiSourceInput}
+            onChangeMultiSourceUrl={changeMultiSourceUrl}
+            onAddMultiSourceSegment={addMultiSourceSegment}
+            onRemoveMultiSourceSegment={removeMultiSourceSegment}
+            onChangeMultiSourceSegment={changeMultiSourceSegment}
+            validMultiSourceSegmentsCount={validMultiSourceSegmentsCount}
+            createMultiSourceEditJob={createMultiSourceEditJob}
+            quoteMode={quoteMode}
+            setQuoteMode={setQuoteMode}
+            quoteText={quoteText}
+            setQuoteText={setQuoteText}
+            quoteCaptionPreset={quoteCaptionPreset}
+            setQuoteCaptionPreset={setQuoteCaptionPreset}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
+            voicePreset={voicePreset}
+            setVoicePreset={setVoicePreset}
+            posterEnabled={posterEnabled}
+            setPosterEnabled={setPosterEnabled}
+            targetDurationSec={targetDurationSec}
+            setTargetDurationSec={setTargetDurationSec}
+            minDurationSec={minDurationSec}
+            setMinDurationSec={setMinDurationSec}
+            maxDurationSec={maxDurationSec}
+            setMaxDurationSec={setMaxDurationSec}
           />
         </div>
 
@@ -536,8 +841,31 @@ export default function HomePageClient() {
           openReview={openReview}
         />
       </div>
+
       {reviewJob && reviewJob.jobGoal === "shorts" && reviewJob.reviewReady && (
         <JobReviewPanel
+          job={reviewJob}
+          apiBaseUrl={API}
+          authedJsonFetch={authedJsonFetch}
+          onClose={() => setReviewJobId(null)}
+          onSaved={fetchJobs}
+          onRendered={fetchJobs}
+        />
+      )}
+
+      {reviewJob && reviewJob.jobGoal === "multi_source_edit" && reviewJob.reviewReady && (
+        <MultiSourceReviewPanel
+          job={reviewJob}
+          apiBaseUrl={API}
+          authedJsonFetch={authedJsonFetch}
+          onClose={() => setReviewJobId(null)}
+          onSaved={fetchJobs}
+          onRendered={fetchJobs}
+        />
+      )}
+
+      {reviewJob && isQuoteReelScriptReviewJob && (
+        <QuoteReelScriptReviewPanel
           job={reviewJob}
           apiBaseUrl={API}
           authedJsonFetch={authedJsonFetch}

@@ -9,7 +9,7 @@ import {
 } from "@server/jobs/jobsDb";
 import { OVERLAY_EMOJIS } from "@lib/overlayEmojis";
 
-type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
 type TextOverlayPosition = "top" | "center" | "bottom";
 
 type CaptionDraftWord = {
@@ -60,7 +60,13 @@ type EndingConfig = {
 };
 
 function isCaptionStyle(value: unknown): value is CaptionStyle {
-  return value === "boldYellow" || value === "subtle" || value === "karaoke";
+  return (
+    value === "boldYellow" ||
+    value === "subtle" ||
+    value === "karaoke" ||
+    value === "wordByWord" ||
+    value === "progressiveWords"
+  );
 }
 
 function isOverlayPosition(value: unknown): value is TextOverlayPosition {

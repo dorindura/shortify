@@ -3,8 +3,15 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteCaptionPreset,
+  LocalQuoteReelMode,
   LocalQuoteTone,
+  LocalQuoteVisualSource,
+  LocalQuoteVoicePreset,
+  LocalShortsOutputMode,
   LocalShortsSelectionMode,
+  MultiSourceInput,
+  MultiSourceSegmentDraft,
 } from "./home.types";
 import OutputFormatSection from "./sections/OutputFormatSection";
 import GoalSection from "./sections/GoalSection";
@@ -12,6 +19,7 @@ import ShortsSelectionSection from "./sections/ShortsSelectionSection";
 import ClipSettingsSection from "./sections/ClipSettingsSection";
 import QuoteReelSection from "./sections/QuoteReelSection";
 import CaptionsSection from "./sections/CaptionsSection";
+import MultiSourceEditSection from "./sections/MultiSourceEditSection";
 
 type Props = {
   loading: boolean;
@@ -22,9 +30,15 @@ type Props = {
   startCheckout: () => Promise<void>;
   handleUrlSubmit: (e: React.FormEvent) => Promise<void>;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  selectedUploadFileName: string | null;
+  uploadInputResetKey: number;
+  clearSelectedUploadFile: () => void;
   isQuoteReel: boolean;
   aspect: LocalJobAspect;
   setAspect: (value: LocalJobAspect) => void;
+  shortsOutputMode: LocalShortsOutputMode;
+  setShortsOutputMode: (value: LocalShortsOutputMode) => void;
+  showLocalOutputModes: boolean;
   optimizedLabel: string;
   jobGoal: LocalJobGoal;
   setJobGoal: (value: LocalJobGoal) => void;
@@ -34,9 +48,16 @@ type Props = {
   selectionMode: LocalShortsSelectionMode;
   setSelectionMode: (value: LocalShortsSelectionMode) => void;
   customRanges: CustomRange[];
-  onAddRange: () => void;
-  onRemoveRange: (id: string) => void;
-  onChangeRange: (id: string, field: "startSec" | "endSec", value: string) => void;
+  onAddCustomClip: () => void;
+  onRemoveCustomClip: (clipId: string) => void;
+  onAddCustomRange: (clipId: string) => void;
+  onRemoveCustomRange: (clipId: string, rangeId: string) => void;
+  onChangeCustomRange: (
+    clipId: string,
+    rangeId: string,
+    field: "startSec" | "endSec",
+    value: string,
+  ) => void;
   validCustomRangesCount: number;
   clipDurationSec: number;
   setClipDurationSec: (value: number) => void;
@@ -46,11 +67,42 @@ type Props = {
   setQuotePrompt: (value: string) => void;
   quoteTone: LocalQuoteTone;
   setQuoteTone: (value: LocalQuoteTone) => void;
+  quoteVisualSource: LocalQuoteVisualSource;
+  setQuoteVisualSource: (value: LocalQuoteVisualSource) => void;
   createQuoteReelJob: () => Promise<void>;
   captionsEnabled: boolean;
   setCaptionsEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
   captionStyle: LocalCaptionStyle;
   setCaptionStyle: (value: LocalCaptionStyle) => void;
+  isMultiSourceEdit: boolean;
+  multiSourceInputs: MultiSourceInput[];
+  multiSourceSegments: MultiSourceSegmentDraft[];
+  onAddMultiSourceInput: () => void;
+  onRemoveMultiSourceInput: (id: string) => void;
+  onChangeMultiSourceUrl: (id: string, value: string) => void;
+  onAddMultiSourceSegment: (sourceId: string) => void;
+  onRemoveMultiSourceSegment: (id: string) => void;
+  onChangeMultiSourceSegment: (id: string, field: "startSec" | "endSec", value: string) => void;
+  validMultiSourceSegmentsCount: number;
+  createMultiSourceEditJob: () => Promise<void>;
+  quoteMode: LocalQuoteReelMode;
+  setQuoteMode: (value: LocalQuoteReelMode) => void;
+  quoteText: string;
+  setQuoteText: (value: string) => void;
+  quoteCaptionPreset: LocalQuoteCaptionPreset;
+  setQuoteCaptionPreset: (value: LocalQuoteCaptionPreset) => void;
+  voiceEnabled: boolean;
+  setVoiceEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
+  voicePreset: LocalQuoteVoicePreset;
+  setVoicePreset: (value: LocalQuoteVoicePreset) => void;
+  posterEnabled: boolean;
+  setPosterEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
+  targetDurationSec: number;
+  setTargetDurationSec: (value: number) => void;
+  minDurationSec: number;
+  setMinDurationSec: (value: number) => void;
+  maxDurationSec: number;
+  setMaxDurationSec: (value: number) => void;
 };
 
 export default function CreateJobPanel(props: Props) {
@@ -63,9 +115,15 @@ export default function CreateJobPanel(props: Props) {
     startCheckout,
     handleUrlSubmit,
     handleFileChange,
+    selectedUploadFileName,
+    uploadInputResetKey,
+    clearSelectedUploadFile,
     isQuoteReel,
     aspect,
     setAspect,
+    shortsOutputMode,
+    setShortsOutputMode,
+    showLocalOutputModes,
     optimizedLabel,
     jobGoal,
     setJobGoal,
@@ -75,9 +133,11 @@ export default function CreateJobPanel(props: Props) {
     selectionMode,
     setSelectionMode,
     customRanges,
-    onAddRange,
-    onRemoveRange,
-    onChangeRange,
+    onAddCustomClip,
+    onRemoveCustomClip,
+    onAddCustomRange,
+    onRemoveCustomRange,
+    onChangeCustomRange,
     validCustomRangesCount,
     clipDurationSec,
     setClipDurationSec,
@@ -87,11 +147,42 @@ export default function CreateJobPanel(props: Props) {
     setQuotePrompt,
     quoteTone,
     setQuoteTone,
+    quoteVisualSource,
+    setQuoteVisualSource,
     createQuoteReelJob,
     captionsEnabled,
     setCaptionsEnabled,
     captionStyle,
     setCaptionStyle,
+    isMultiSourceEdit,
+    multiSourceInputs,
+    multiSourceSegments,
+    onAddMultiSourceInput,
+    onRemoveMultiSourceInput,
+    onChangeMultiSourceUrl,
+    onAddMultiSourceSegment,
+    onRemoveMultiSourceSegment,
+    onChangeMultiSourceSegment,
+    validMultiSourceSegmentsCount,
+    createMultiSourceEditJob,
+    quoteMode,
+    setQuoteMode,
+    quoteText,
+    setQuoteText,
+    quoteCaptionPreset,
+    setQuoteCaptionPreset,
+    voiceEnabled,
+    setVoiceEnabled,
+    voicePreset,
+    setVoicePreset,
+    posterEnabled,
+    setPosterEnabled,
+    targetDurationSec,
+    setTargetDurationSec,
+    minDurationSec,
+    setMinDurationSec,
+    maxDurationSec,
+    setMaxDurationSec,
   } = props;
 
   return (
@@ -100,7 +191,7 @@ export default function CreateJobPanel(props: Props) {
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold text-slate-50">Create new job</h2>
           <p className="text-xs text-slate-400">
-            Create shorts from a URL, upload a video, or generate a Quote Reel from AI.
+            Create shorts, summaries, quote reels, or multi-source timeline edits.
           </p>
         </div>
 
@@ -131,69 +222,121 @@ export default function CreateJobPanel(props: Props) {
           </div>
         )}
 
-        <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <input
-              type="url"
-              placeholder="youtube.com/watch?v=..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              disabled={loading || isQuoteReel}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50"
-            />
+        {isMultiSourceEdit && (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-[12px] text-cyan-200">
+            Multi-source edit uses manual source URLs and manual segment ranges only. AI highlight
+            detection and file upload are disabled in this mode.
           </div>
-          <button
-            type="submit"
-            disabled={
-              loading || isQuoteReel || (selectionMode === "custom" && validCustomRangesCount === 0)
-            }
-            className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="hidden sm:inline">Generate from URL</span>
-            <span className="sm:hidden">Generate</span>
-          </button>
-        </form>
+        )}
 
-        <div className="flex items-center gap-3 text-[10px] tracking-[0.16em] text-slate-500 uppercase">
-          <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
-          or upload file
-          <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
-        </div>
+        {!isMultiSourceEdit && (
+          <>
+            <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <input
+                  type="url"
+                  placeholder="youtube.com/watch?v=..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={loading || isQuoteReel || isMultiSourceEdit}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/90 px-10 py-2 text-sm text-slate-100 ring-1 ring-transparent transition outline-none focus:border-sky-500 focus:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  isMultiSourceEdit ||
+                  (shortsOutputMode !== "full_x2_local" &&
+                    selectionMode === "custom" &&
+                    validCustomRangesCount === 0)
+                }
+                className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="hidden sm:inline">
+                  {selectedUploadFileName ? "Generate from upload" : "Generate from URL"}
+                </span>
+                <span className="sm:hidden">{selectedUploadFileName ? "Upload" : "Generate"}</span>
+              </button>
+            </form>
 
-        <label
-          className={`group relative flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs transition ${
-            isQuoteReel
-              ? "cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-500"
-              : "cursor-pointer border-slate-700/90 bg-slate-900/60 text-slate-300/90 hover:border-sky-500 hover:bg-slate-900/80"
-          }`}
-        >
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] font-medium text-sky-300">
-              Upload video
-            </span>
-            <span className="text-slate-400">MP4 / MOV / WebM</span>
+            <div className="flex items-center gap-3 text-[10px] tracking-[0.16em] text-slate-500 uppercase">
+              <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
+              or upload file
+              <div className="h-px flex-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800" />
+            </div>
+
+            <label
+              className={`group relative flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs transition ${
+                isQuoteReel || isMultiSourceEdit
+                  ? "cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-500"
+                  : "cursor-pointer border-slate-700/90 bg-slate-900/60 text-slate-300/90 hover:border-sky-500 hover:bg-slate-900/80"
+              }`}
+            >
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] font-medium text-sky-300">
+                  Upload video
+                </span>
+                <span className="text-slate-400">MP4 / MOV / WebM</span>
+              </div>
+              <p className="max-w-xs text-[11px] text-slate-500">
+                {selectedUploadFileName
+                  ? selectedUploadFileName
+                  : "Drop a file here or click to browse from your computer."}
+              </p>
+              {selectedUploadFileName && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    clearSelectedUploadFile();
+                  }}
+                  className="relative z-10 rounded-full border border-slate-700 px-3 py-1 text-[10px] font-semibold text-slate-300 hover:border-rose-400 hover:text-rose-200"
+                >
+                  Clear file
+                </button>
+              )}
+              <input
+                key={uploadInputResetKey}
+                type="file"
+                accept="video/*"
+                onChange={handleFileChange}
+                disabled={
+                  loading ||
+                  isQuoteReel ||
+                  isMultiSourceEdit ||
+                  (selectionMode === "custom" && validCustomRangesCount === 0)
+                }
+                className={`absolute inset-0 opacity-0 ${
+                  isQuoteReel || isMultiSourceEdit ? "cursor-not-allowed" : "cursor-pointer"
+                }`}
+              />
+            </label>
+          </>
+        )}
+
+        {isMultiSourceEdit && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={createMultiSourceEditJob}
+              disabled={loading || validMultiSourceSegmentsCount === 0}
+              className="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-400 px-8 py-4 text-sm font-medium text-slate-950 shadow-lg shadow-cyan-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Create multi-source edit
+            </button>
           </div>
-          <p className="max-w-xs text-[11px] text-slate-500">
-            Drop a file here or click to browse from your computer.
-          </p>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={handleFileChange}
-            disabled={
-              loading || isQuoteReel || (selectionMode === "custom" && validCustomRangesCount === 0)
-            }
-            className={`absolute inset-0 opacity-0 ${
-              isQuoteReel ? "cursor-not-allowed" : "cursor-pointer"
-            }`}
-          />
-        </label>
+        )}
       </section>
 
       <section className="space-y-4 rounded-2xl border border-slate-800/80 bg-slate-950/70 p-5 shadow-xl shadow-black/40 backdrop-blur-md">
         <OutputFormatSection
           aspect={aspect}
           setAspect={setAspect}
+          shortsOutputMode={shortsOutputMode}
+          setShortsOutputMode={setShortsOutputMode}
+          showLocalOutputModes={showLocalOutputModes}
           isQuoteReel={isQuoteReel}
           optimizedLabel={optimizedLabel}
         />
@@ -206,17 +349,33 @@ export default function CreateJobPanel(props: Props) {
           isPro={isPro}
         />
 
-        <ShortsSelectionSection
+        <MultiSourceEditSection
           jobGoal={jobGoal}
-          selectionMode={selectionMode}
-          setSelectionMode={setSelectionMode}
-          customRanges={customRanges}
-          onAddRange={onAddRange}
-          onRemoveRange={onRemoveRange}
-          onChangeRange={onChangeRange}
+          sources={multiSourceInputs}
+          segments={multiSourceSegments}
+          onAddSource={onAddMultiSourceInput}
+          onRemoveSource={onRemoveMultiSourceInput}
+          onChangeSourceUrl={onChangeMultiSourceUrl}
+          onAddSegment={onAddMultiSourceSegment}
+          onRemoveSegment={onRemoveMultiSourceSegment}
+          onChangeSegment={onChangeMultiSourceSegment}
         />
 
-        {selectionMode !== "custom" && (
+        {!isMultiSourceEdit && (
+          <ShortsSelectionSection
+            jobGoal={jobGoal}
+            selectionMode={selectionMode}
+            setSelectionMode={setSelectionMode}
+            customRanges={customRanges}
+            onAddClip={onAddCustomClip}
+            onRemoveClip={onRemoveCustomClip}
+            onAddRange={onAddCustomRange}
+            onRemoveRange={onRemoveCustomRange}
+            onChangeRange={onChangeCustomRange}
+          />
+        )}
+
+        {!isMultiSourceEdit && selectionMode !== "custom" && (
           <ClipSettingsSection
             jobGoal={jobGoal}
             clipDurationSec={clipDurationSec}
@@ -226,22 +385,48 @@ export default function CreateJobPanel(props: Props) {
           />
         )}
 
-        <QuoteReelSection
-          jobGoal={jobGoal}
-          quotePrompt={quotePrompt}
-          setQuotePrompt={setQuotePrompt}
-          quoteTone={quoteTone}
-          setQuoteTone={setQuoteTone}
-          loading={loading}
-          onCreateQuoteReel={createQuoteReelJob}
-        />
+        {!isMultiSourceEdit && (
+          <QuoteReelSection
+            jobGoal={jobGoal}
+            quoteMode={quoteMode}
+            setQuoteMode={setQuoteMode}
+            quotePrompt={quotePrompt}
+            setQuotePrompt={setQuotePrompt}
+            quoteText={quoteText}
+            setQuoteText={setQuoteText}
+            quoteTone={quoteTone}
+            setQuoteTone={setQuoteTone}
+            quoteVisualSource={quoteVisualSource}
+            setQuoteVisualSource={setQuoteVisualSource}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
+            voicePreset={voicePreset}
+            setVoicePreset={setVoicePreset}
+            posterEnabled={posterEnabled}
+            setPosterEnabled={setPosterEnabled}
+            targetDurationSec={targetDurationSec}
+            setTargetDurationSec={setTargetDurationSec}
+            minDurationSec={minDurationSec}
+            setMinDurationSec={setMinDurationSec}
+            maxDurationSec={maxDurationSec}
+            setMaxDurationSec={setMaxDurationSec}
+            captionsEnabled={captionsEnabled}
+            setCaptionsEnabled={setCaptionsEnabled}
+            quoteCaptionPreset={quoteCaptionPreset}
+            setQuoteCaptionPreset={setQuoteCaptionPreset}
+            loading={loading}
+            onCreateQuoteReel={createQuoteReelJob}
+          />
+        )}
 
-        <CaptionsSection
-          captionsEnabled={captionsEnabled}
-          setCaptionsEnabled={setCaptionsEnabled}
-          captionStyle={captionStyle}
-          setCaptionStyle={setCaptionStyle}
-        />
+        {!isMultiSourceEdit && !isQuoteReel && (
+          <CaptionsSection
+            captionsEnabled={captionsEnabled}
+            setCaptionsEnabled={setCaptionsEnabled}
+            captionStyle={captionStyle}
+            setCaptionStyle={setCaptionStyle}
+          />
+        )}
       </section>
     </>
   );

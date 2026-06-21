@@ -29,6 +29,7 @@ export async function createJob(job: Job, sb: SupabaseClient) {
     text_overlays: job.textOverlays ?? null,
     review_ready: job.reviewReady ?? false,
     smart_crops: job.smartCrops ?? null,
+    multi_source_edit_config: job.multiSourceEditConfig ?? null,
     created_at: job.createdAt,
     updated_at: job.updatedAt,
     ending: job.ending ?? null,
@@ -76,6 +77,7 @@ export async function listJobsByOwner(ownerId: string, sb: SupabaseClient): Prom
     textOverlays: row.text_overlays ?? undefined,
     reviewReady: row.review_ready ?? false,
     smartCrops: row.smart_crops ?? undefined,
+    multiSourceEditConfig: row.multi_source_edit_config ?? undefined,
     ending: row.ending ?? undefined,
   }));
 }

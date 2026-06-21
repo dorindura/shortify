@@ -23,12 +23,14 @@ export default function GoalSection({
           {jobGoal === "summary"
             ? `Summary ~${summaryTargetSec}s`
             : jobGoal === "quote_reel"
-              ? "Quote Reel"
-              : "Multiple shorts"}
+              ? "AI Story Reel"
+              : jobGoal === "multi_source_edit"
+                ? "Multi-source Edit"
+                : "Multiple shorts"}
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-3">
         <button
           type="button"
           onClick={() => setJobGoal("shorts")}
@@ -44,20 +46,20 @@ export default function GoalSection({
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setJobGoal("summary")}
-          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-            jobGoal === "summary"
-              ? "border-emerald-500 bg-slate-900/80 text-slate-50"
-              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"
-          }`}
-        >
-          <div className="font-semibold">AI Story Summary (Pro)</div>
-          <div className="mt-0.5 text-[11px] text-slate-400">
-            One highlight reel around a target length.
-          </div>
-        </button>
+        {/*<button*/}
+        {/*  type="button"*/}
+        {/*  onClick={() => setJobGoal("summary")}*/}
+        {/*  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${*/}
+        {/*    jobGoal === "summary"*/}
+        {/*      ? "border-emerald-500 bg-slate-900/80 text-slate-50"*/}
+        {/*      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"*/}
+        {/*  }`}*/}
+        {/*>*/}
+        {/*  <div className="font-semibold">AI Story Summary (Pro)</div>*/}
+        {/*  <div className="mt-0.5 text-[11px] text-slate-400">*/}
+        {/*    One highlight reel around a target length.*/}
+        {/*  </div>*/}
+        {/*</button>*/}
 
         <button
           type="button"
@@ -68,9 +70,25 @@ export default function GoalSection({
               : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
           }`}
         >
-          <div className="font-semibold">Quote Reel (Pro)</div>
+          <div className="font-semibold">AI Story Reel (Pro)</div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            Generate a faceless reel with a famous quote, curated visuals, and AI sound suggestions.
+            Generate a 60s+ faceless vertical reel from your text or from an AI topic prompt, with
+            voice-over, captions, and rapid scene changes.
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setJobGoal("multi_source_edit")}
+          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+            jobGoal === "multi_source_edit"
+              ? "border-cyan-500 bg-slate-900/80 text-slate-50"
+              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-cyan-500/60"
+          }`}
+        >
+          <div className="font-semibold">Multi-Source Edit</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">
+            Manually combine segments from up to 5 source URLs into one final timeline.
           </div>
         </button>
       </div>

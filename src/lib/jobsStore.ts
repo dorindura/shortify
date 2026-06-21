@@ -1,24 +1,51 @@
 // src/lib/jobsStore.ts
 export type JobStatus = "pending" | "processing" | "done" | "failed";
 export type ShortsSelectionMode = "auto" | "custom";
-export type JobType = "upload" | "url" | "quote_reel";
+export type ShortsOutputMode = "shorts" | "full_x2_local";
+export type JobType = "upload" | "url" | "quote_reel" | "multi_source_edit";
 export type JobAspect = "horizontal" | "vertical" | "verticalLetterbox";
-export type CaptionStyle = "boldYellow" | "subtle" | "karaoke";
+export type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
 
 export type JobStage =
   | "queued"
   | "planning"
+  | "script_generation"
+  | "voiceover"
+  | "asset_selection"
   | "downloading"
   | "captioning"
   | "scoring"
   | "clipping"
+  | "assembling"
+  | "review_ready"
   | "rendering"
+  | "poster"
   | "uploading"
   | "finished";
 
-export type JobGoal = "shorts" | "summary" | "quote_reel";
+export type JobGoal = "shorts" | "summary" | "quote_reel" | "multi_source_edit";
 
-export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark";
+export type QuoteReelTone = "aggressive" | "cinematic" | "calm" | "dark" | "emotional" | "stoic";
+
+export type QuoteReelMode = "manual_text" | "ai_text";
+
+export type QuoteReelVisualSource = "auto" | "cartoons";
+
+export type QuoteReelVoicePreset =
+  | "dark_male"
+  | "storyteller"
+  | "soft_female"
+  | "motivational_male"
+  | "neutral";
+
+export type QuoteReelSegmentType = "hook" | "setup" | "build" | "payoff" | "cta";
+
+export type QuoteReelCaptionPreset =
+  | "card_bottom_karaoke"
+  | "card_center_word_by_word"
+  | "card_center_progressive_words"
+  | "card_center_premium_word"
+  | "card_bottom_premium_karaoke";
 
 export type ShortsCustomRange = {
   id: string;
@@ -26,9 +53,15 @@ export type ShortsCustomRange = {
   endSec: number;
 };
 
+export type ShortsCustomClip = {
+  id: string;
+  ranges: ShortsCustomRange[];
+};
+
 export type ShortsConfig = {
   selectionMode: ShortsSelectionMode;
-  customRanges?: ShortsCustomRange[];
+  outputMode?: ShortsOutputMode;
+  customRanges?: (ShortsCustomRange | ShortsCustomClip)[];
 };
 
 export type CaptionDraftWord = {
@@ -61,24 +94,83 @@ export type TextOverlay = {
   position: TextOverlayPosition;
 };
 
+export type QuoteReelSegment = {
+  id: string;
+  index: number;
+  type: QuoteReelSegmentType;
+  text: string;
+  voiceoverText: string;
+  visualTags: string[];
+  durationSec?: number;
+};
+
+export type QuoteReelAssetType = "video" | "image";
+
+export type QuoteReelAssetPick = {
+  segmentId: string;
+  assetType: QuoteReelAssetType;
+  assetPath: string;
+  sourceCategory?: string;
+  startSec?: number;
+  endSec?: number;
+};
+
+export type QuoteReelMusicSuggestion = {
+  label: string;
+  searchQuery: string;
+  reason?: string;
+};
+
+export type QuoteReelVoiceoverMeta = {
+  enabled: boolean;
+  voicePreset?: QuoteReelVoicePreset;
+  voiceId?: string;
+  modelId?: string;
+  audioPath?: string;
+  audioUrl?: string;
+  durationSec?: number;
+  captionDraft?: CaptionDraftClip;
+};
+
 export type QuoteReelMeta = {
-  quote?: string;
-  author?: string;
+  mode?: QuoteReelMode;
+  tone?: QuoteReelTone;
+  visualSource?: QuoteReelVisualSource;
+
+  sourceText?: string;
+  generatedText?: string;
+  finalScript?: string;
+  scriptReviewRequired?: boolean;
+  scriptReviewApproved?: boolean;
+  scriptEdited?: boolean;
+  originalFinalScript?: string;
+
+  targetDurationSec?: number;
+  minDurationSec?: number;
+  maxDurationSec?: number;
+  actualDurationSec?: number;
+
+  captionsEnabled?: boolean;
+  captionStyle?: CaptionStyle;
+
+  voiceEnabled?: boolean;
+  voicePreset?: QuoteReelVoicePreset;
+
+  segments?: QuoteReelSegment[];
+  selectedAssets?: QuoteReelAssetPick[];
+  captionPreset?: QuoteReelCaptionPreset;
+
   instagramCaption?: string;
   hashtags?: string[];
-  primaryFolder?: string;
-  fallbackFolder?: string;
-  selectedImages?: string[];
-  // overlayHandle?: string;
-  tone?: QuoteReelTone;
-  durationSec?: number;
-  recommendedDurationSec?: number;
-  recommendedImageCount?: number;
-  musicSuggestion?: {
-    label: string;
-    searchQuery: string;
-    reason?: string;
-  };
+  musicSuggestions?: QuoteReelMusicSuggestion[];
+
+  voiceover?: QuoteReelVoiceoverMeta;
+
+  // TikTok quote poster (optional extra output alongside the reel).
+  posterEnabled?: boolean;
+  posterQuote?: string;
+  posterUrl?: string;
+  posterImageCategory?: string;
 };
 
 export type SmartCropSegment = {
@@ -106,6 +198,46 @@ export type EndingConfig = {
   position?: EndingPosition;
 };
 
+export type MultiSourceSegment = {
+  id: string;
+  sourceId: string;
+  url: string;
+  startSec: number;
+  endSec: number;
+  order: number;
+};
+
+export type FinalTimelineOverlayPosition = "top" | "center" | "bottom";
+
+export type FinalTimelineOverlay = {
+  id: string;
+  text: string;
+  startSec: number;
+  endSec: number;
+  position: FinalTimelineOverlayPosition;
+  emoji?: string | null;
+  emojiPlacement?: "left" | "right";
+};
+
+export type MultiSourceBlackWhiteRange = {
+  id: string;
+  startSec: number;
+  endSec: number;
+};
+
+export type MultiSourceReviewConfig = {
+  textOverlays?: FinalTimelineOverlay[];
+  blackWhiteRanges?: MultiSourceBlackWhiteRange[];
+  ending?: EndingConfig | null;
+};
+
+export type MultiSourceEditConfig = {
+  segments: MultiSourceSegment[];
+  draftVideoUrl?: string;
+  finalVideoUrl?: string;
+  reviewConfig?: MultiSourceReviewConfig;
+};
+
 export type Job = {
   id: string;
   ownerId: string;
@@ -120,6 +252,7 @@ export type Job = {
   captionsEnabled?: boolean;
   captionStyle?: CaptionStyle;
   blackAndWhite?: boolean;
+  multiSourceEditConfig?: MultiSourceEditConfig;
 
   clips?: string[];
   previewClips?: string[];
@@ -131,7 +264,6 @@ export type Job = {
   jobGoal?: JobGoal;
   summaryTargetSec?: number;
 
-  // NEW
   quotePrompt?: string;
   quoteReelMeta?: QuoteReelMeta;
   shortsConfig?: ShortsConfig;
@@ -189,11 +321,7 @@ export function setJobCaptionedClips(id: string, urls: string[]) {
   }
 }
 
-export function setJobCaptionedResults(
-  id: string,
-  clipUrls: string[],
-  thumbUrls: string[],
-) {
+export function setJobCaptionedResults(id: string, clipUrls: string[], thumbUrls: string[]) {
   const job = jobs.find((j) => j.id === id);
   if (job) {
     job.captionedClips = clipUrls;
@@ -213,7 +341,6 @@ export function updateJobStage(id: string, stage: JobStage, progress?: number) {
   }
 }
 
-// NEW: directly update progress
 export function updateJobProgress(id: string, progress: number) {
   const job = jobs.find((j) => j.id === id);
   if (job) {

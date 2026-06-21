@@ -2,6 +2,7 @@ import fsp from "fs/promises";
 import path from "path";
 
 const IS_PROD = process.env.NODE_ENV === "production";
+const LOCAL_RENDER_OUTPUTS = process.env.LOCAL_RENDER_OUTPUTS === "true";
 
 const ROOT = process.cwd();
 
@@ -49,6 +50,7 @@ export async function cleanupLocalJobArtifacts(opts: {
 
   extraPaths?: string[];
 }) {
+  if (LOCAL_RENDER_OUTPUTS) return;
   if (!IS_PROD) return;
 
   const {

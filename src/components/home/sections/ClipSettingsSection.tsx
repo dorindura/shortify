@@ -1,5 +1,5 @@
 type Props = {
-  jobGoal: "shorts" | "summary" | "quote_reel";
+  jobGoal: "shorts" | "summary" | "quote_reel" | "multi_source_edit";
   clipDurationSec: number;
   setClipDurationSec: (value: number) => void;
   maxClips: number;
@@ -24,9 +24,7 @@ export default function ClipSettingsSection({
       <div className="space-y-2 md:border-r md:border-slate-800/80 md:pr-6">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-slate-200">Clip length</h3>
-          <span className="text-[10px] text-slate-500">
-            ~{clipDurationSec}s per short
-          </span>
+          <span className="text-[10px] text-slate-500">~{clipDurationSec}s per short</span>
         </div>
         <div className="flex flex-wrap justify-center gap-1.5">
           {[20, 30, 45, 60, 90].map((val) => (
@@ -48,12 +46,8 @@ export default function ClipSettingsSection({
 
       <div className="space-y-2 md:pl-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-slate-200">
-            Max clips per video
-          </h3>
-          <span className="text-[10px] text-slate-500">
-            Up to {maxClips} shorts
-          </span>
+          <h3 className="text-xs font-semibold text-slate-200">Max clips per video</h3>
+          <span className="text-[10px] text-slate-500">Up to {maxClips} shorts</span>
         </div>
         <div className="flex flex-wrap justify-center gap-1.5">
           {[1, 2, 3, 4, 5].map((val) => (

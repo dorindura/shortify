@@ -77,3 +77,43 @@ export async function dbSetJobSmartCrops(jobId: string, smartCrops: any) {
 export async function dbSetJobPreviewClips(jobId: string, previewClips: string[]) {
   return dbUpdateJob(jobId, { preview_clips: previewClips });
 }
+
+export async function dbSetMultiSourceEditConfig(jobId: string, config: any) {
+  return dbUpdateJob(jobId, { multi_source_edit_config: config });
+}
+
+export async function dbSetMultiSourceDraftVideoUrl(jobId: string, draftVideoUrl: string) {
+  const job = await dbGetJob(jobId);
+  const current = job?.multi_source_edit_config ?? {};
+
+  return dbUpdateJob(jobId, {
+    multi_source_edit_config: {
+      ...current,
+      draftVideoUrl,
+    },
+  });
+}
+
+export async function dbSetMultiSourceReviewConfig(jobId: string, reviewConfig: any) {
+  const job = await dbGetJob(jobId);
+  const current = job?.multi_source_edit_config ?? {};
+
+  return dbUpdateJob(jobId, {
+    multi_source_edit_config: {
+      ...current,
+      reviewConfig,
+    },
+  });
+}
+
+export async function dbSetMultiSourceFinalVideoUrl(jobId: string, finalVideoUrl: string) {
+  const job = await dbGetJob(jobId);
+  const current = job?.multi_source_edit_config ?? {};
+
+  return dbUpdateJob(jobId, {
+    multi_source_edit_config: {
+      ...current,
+      finalVideoUrl,
+    },
+  });
+}

@@ -38,7 +38,7 @@ export default function CaptionsSection({
       </div>
 
       <fieldset
-        className={`mt-3 grid gap-3 text-xs text-slate-200 md:grid-cols-3 ${
+        className={`mt-3 grid gap-3 text-xs text-slate-200 md:grid-cols-2 xl:grid-cols-4 ${
           !captionsEnabled ? "pointer-events-none opacity-40" : ""
         }`}
       >
@@ -92,19 +92,40 @@ export default function CaptionsSection({
           <input
             type="radio"
             name="captionStyle"
-            value="subtle"
-            checked={captionStyle === "subtle"}
-            onChange={() => setCaptionStyle("subtle")}
+            value="wordByWord"
+            checked={captionStyle === "wordByWord"}
+            onChange={() => setCaptionStyle("wordByWord")}
             className="peer sr-only"
           />
           <span className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-slate-100">Subtle & clean</span>
-            <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-300">
-              Minimal
+            <span className="font-semibold text-slate-100">Word by Word</span>
+            <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-cyan-300">
+              Punchy
             </span>
           </span>
           <span className="mt-1 text-[10px] text-slate-400">
-            Low-noise captions that stay out of the way.
+            One timed word at a time in the same lower caption zone.
+          </span>
+          <span className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-sky-500/0 transition peer-checked:ring-sky-500/80" />
+        </label>
+
+        <label className="group relative flex cursor-pointer flex-col rounded-xl border border-slate-800/90 bg-slate-950/80 px-3 py-3 text-[11px] shadow-sm shadow-black/40 transition hover:border-sky-500/60">
+          <input
+            type="radio"
+            name="captionStyle"
+            value="progressiveWords"
+            checked={captionStyle === "progressiveWords"}
+            onChange={() => setCaptionStyle("progressiveWords")}
+            className="peer sr-only"
+          />
+          <span className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-slate-100">Progressive Words</span>
+            <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-emerald-300">
+              Build-up
+            </span>
+          </span>
+          <span className="mt-1 text-[10px] text-slate-400">
+            Words accumulate progressively with the current word emphasized.
           </span>
           <span className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-sky-500/0 transition peer-checked:ring-sky-500/80" />
         </label>

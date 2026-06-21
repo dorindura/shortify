@@ -1,8 +1,11 @@
-import type { LocalJobAspect } from "../home.types";
+import type { LocalJobAspect, LocalShortsOutputMode } from "../home.types";
 
 type Props = {
   aspect: LocalJobAspect;
   setAspect: (value: LocalJobAspect) => void;
+  shortsOutputMode: LocalShortsOutputMode;
+  setShortsOutputMode: (value: LocalShortsOutputMode) => void;
+  showLocalOutputModes: boolean;
   isQuoteReel: boolean;
   optimizedLabel: string;
 };
@@ -10,9 +13,14 @@ type Props = {
 export default function OutputFormatSection({
   aspect,
   setAspect,
+  shortsOutputMode,
+  setShortsOutputMode,
+  showLocalOutputModes,
   isQuoteReel,
   optimizedLabel,
 }: Props) {
+  const useLocalFullX2 = showLocalOutputModes && shortsOutputMode === "full_x2_local";
+
   return (
     <div className={`space-y-3 ${isQuoteReel ? "pointer-events-none opacity-40" : ""}`}>
       <div className="flex items-center justify-between">
@@ -20,14 +28,21 @@ export default function OutputFormatSection({
         <span className="text-[10px] text-slate-500">Optimized for {optimizedLabel}</span>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div
+        className={`grid grid-cols-1 gap-3 ${
+          showLocalOutputModes ? "sm:grid-cols-4" : "sm:grid-cols-3"
+        }`}
+      >
         <label className="group relative">
           <input
             type="radio"
             name="aspect"
             value="horizontal"
-            checked={aspect === "horizontal"}
-            onChange={() => setAspect("horizontal")}
+            checked={!useLocalFullX2 && aspect === "horizontal"}
+            onChange={() => {
+              setShortsOutputMode("shorts");
+              setAspect("horizontal");
+            }}
             className="peer sr-only"
           />
           <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-sky-500/60 peer-checked:border-sky-500 peer-checked:bg-slate-900/80">
@@ -51,8 +66,11 @@ export default function OutputFormatSection({
             type="radio"
             name="aspect"
             value="vertical"
-            checked={aspect === "vertical"}
-            onChange={() => setAspect("vertical")}
+            checked={!useLocalFullX2 && aspect === "vertical"}
+            onChange={() => {
+              setShortsOutputMode("shorts");
+              setAspect("vertical");
+            }}
             className="peer sr-only"
           />
           <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-sky-500/60 peer-checked:border-sky-500 peer-checked:bg-slate-900/80">
@@ -78,8 +96,11 @@ export default function OutputFormatSection({
             type="radio"
             name="aspect"
             value="verticalLetterbox"
-            checked={aspect === "verticalLetterbox"}
-            onChange={() => setAspect("verticalLetterbox")}
+            checked={!useLocalFullX2 && aspect === "verticalLetterbox"}
+            onChange={() => {
+              setShortsOutputMode("shorts");
+              setAspect("verticalLetterbox");
+            }}
             className="peer sr-only"
           />
           <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-sky-500/60 peer-checked:border-sky-500 peer-checked:bg-slate-900/80">
@@ -100,11 +121,40 @@ export default function OutputFormatSection({
               </div>
 
               <p className="text-[11px] text-slate-400">
-                Full video visible — padded to 9:16 with black bars.
+                Keeps more of the full action visible with black bars.
               </p>
             </div>
           </div>
         </label>
+
+        {showLocalOutputModes && (
+          <label className="group relative">
+            <input
+              type="radio"
+              name="aspect"
+              value="full_x2_local"
+              checked={useLocalFullX2}
+              onChange={() => setShortsOutputMode("full_x2_local")}
+              className="peer sr-only"
+            />
+            <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-emerald-500/60 peer-checked:border-emerald-500 peer-checked:bg-slate-900/80">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">Full x2 local</span>
+                <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-emerald-300">
+                  Local
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex h-7 w-10 items-center justify-center rounded-lg border border-emerald-500/40 bg-slate-900 text-[10px] font-semibold text-emerald-300">
+                  2x
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Saves the entire source video to local disk only.
+                </p>
+              </div>
+            </div>
+          </label>
+        )}
       </div>
     </div>
   );

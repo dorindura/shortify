@@ -22,6 +22,8 @@ type CaptionDraftClip = {
   chunks: CaptionDraftChunk[];
 };
 
+type CaptionStyle = "boldYellow" | "subtle" | "karaoke" | "wordByWord" | "progressiveWords";
+
 type TextOverlayPosition = "top" | "center" | "bottom";
 
 type OverlayEmojiPlacement = "left" | "right";
@@ -65,12 +67,14 @@ type Props = {
   drafts: CaptionDraftClip[];
   overlays: TextOverlay[];
   captionsEnabled: boolean;
+  captionStyle?: CaptionStyle;
   blackAndWhite?: boolean;
   ending?: EndingConfig;
   aspect?: "horizontal" | "vertical" | "verticalLetterbox";
   smartCrops?: (SmartCropBox | null)[];
   onTimeChange?: (time: number) => void;
-  seekTo?: number | null;
+  onDurationChange?: (duration: number) => void;
+  seekTo?: { time: number; play?: boolean } | number | null;
   onSeekHandled?: () => void;
 };
 
@@ -121,15 +125,31 @@ function buildEndingPreviewParts(ending?: EndingConfig) {
   }
 }
 
+function getValidCaptionWords(chunk: CaptionDraftChunk | null): CaptionDraftWord[] {
+  if (!chunk) return [];
+
+  return (chunk.words ?? [])
+    .filter(
+      (word) =>
+        word.text.trim() &&
+        Number.isFinite(word.startSec) &&
+        Number.isFinite(word.endSec) &&
+        word.endSec > word.startSec,
+    )
+    .sort((a, b) => a.startSec - b.startSec);
+}
+
 export default function ReviewVideoPreview({
   clipUrl,
   clipIndex,
   drafts,
   overlays,
   captionsEnabled,
+  captionStyle = "karaoke",
   blackAndWhite,
   ending,
   onTimeChange,
+  onDurationChange,
   seekTo,
   onSeekHandled,
 }: Props) {
@@ -154,6 +174,29 @@ export default function ReviewVideoPreview({
     );
   }, [currentClipDraft, currentTime]);
 
+  const activeCaptionText = useMemo(() => {
+    if (!activeChunk) return "";
+
+    const words = getValidCaptionWords(activeChunk);
+
+    if (captionStyle === "wordByWord") {
+      return (
+        words.find(
+          (word) => currentTime >= word.startSec - 0.04 && currentTime <= word.endSec + 0.08,
+        )?.text ?? ""
+      );
+    }
+
+    if (captionStyle === "progressiveWords") {
+      const visibleWords = words.filter((word) => currentTime >= word.startSec - 0.04);
+      return visibleWords.length ? visibleWords.map((word) => word.text).join(" ") : "";
+    }
+
+    return activeChunk.text;
+  }, [activeChunk, captionStyle, currentTime]);
+
+  const activeCaptionWords = useMemo(() => getValidCaptionWords(activeChunk), [activeChunk]);
+
   const activeOverlays = useMemo(() => {
     return overlays.filter(
       (overlay) =>
@@ -168,14 +211,22 @@ export default function ReviewVideoPreview({
     if (!videoRef.current) return;
 
     const video = videoRef.current;
-    video.currentTime = seekTo;
-    setCurrentTime(seekTo);
-    setIsEndingPreviewActive(false);
-    onTimeChange?.(seekTo);
 
-    video.play().catch(() => {
-      // ignore autoplay restrictions
-    });
+    const targetTime = typeof seekTo === "number" ? seekTo : seekTo.time;
+    const shouldPlay = typeof seekTo === "number" ? true : (seekTo.play ?? true);
+
+    video.currentTime = targetTime;
+    setCurrentTime(targetTime);
+    setIsEndingPreviewActive(false);
+    onTimeChange?.(targetTime);
+
+    if (shouldPlay) {
+      video.play().catch(() => {
+        // ignore autoplay restrictions
+      });
+    } else {
+      video.pause();
+    }
 
     onSeekHandled?.();
   }, [seekTo, onSeekHandled, onTimeChange]);
@@ -217,7 +268,7 @@ export default function ReviewVideoPreview({
   const shouldHideRegularOverlay = isEndingPreviewActive || isTimedEndingVisible;
 
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/80 p-4">
+    <div className="flex h-full min-h-0 flex-col rounded-2xl bg-slate-950/80">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-slate-100">Live preview</div>
@@ -231,15 +282,17 @@ export default function ReviewVideoPreview({
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-black">
-        <div className="relative mx-auto aspect-[9/16] w-full max-w-[420px] bg-black">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[22px] border border-slate-800 bg-black shadow-2xl shadow-black/40">
+        <div className="relative mx-auto aspect-[9/16] h-full max-h-full min-h-[360px] w-auto max-w-full bg-black xl:min-h-[480px]">
           {clipUrl ? (
             <video
               ref={videoRef}
               src={clipUrl}
               controls
               onLoadedMetadata={(e) => {
-                setVideoDuration(e.currentTarget.duration || 0);
+                const duration = e.currentTarget.duration || 0;
+                setVideoDuration(duration);
+                onDurationChange?.(duration);
               }}
               className="h-full w-full bg-black object-contain"
               style={{
@@ -294,11 +347,32 @@ export default function ReviewVideoPreview({
             </div>
           )}
 
-          {captionsEnabled && activeChunk?.text && !shouldHideRegularOverlay && (
-            <div className="pointer-events-none absolute inset-x-4 bottom-16 flex justify-center">
-              {/*<div className="max-w-[90%] rounded-xl bg-black/55 px-4 py-2 text-center text-sm leading-relaxed font-semibold text-white shadow-lg shadow-black/40 backdrop-blur-sm">*/}
-              {activeChunk.text}
-              {/*</div>*/}
+          {captionsEnabled && activeCaptionText && !shouldHideRegularOverlay && (
+            <div className="pointer-events-none absolute inset-x-4 bottom-[19.8%] z-10 flex justify-center">
+              <div className="max-w-[86%] text-center text-[clamp(14px,1.6vh,18px)] leading-[1.12] font-normal tracking-normal text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.82)] [-webkit-text-stroke:0]">
+                {captionStyle === "karaoke" && activeCaptionWords.length > 0 ? (
+                  <span className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+                    {activeCaptionWords.map((word, index) => {
+                      const hasBeenSpoken = currentTime >= word.endSec;
+
+                      return (
+                        <span
+                          key={`${word.startSec}-${word.endSec}-${index}`}
+                          className={`inline-block transition-colors duration-75 ${
+                            hasBeenSpoken ? "text-white" : "text-[#00d2ff]"
+                          }`}
+                        >
+                          {word.text}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : captionStyle === "boldYellow" ? (
+                  <span className="text-[#ffff00]">{activeCaptionText}</span>
+                ) : (
+                  <span>{activeCaptionText}</span>
+                )}
+              </div>
             </div>
           )}
 
@@ -427,7 +501,7 @@ export default function ReviewVideoPreview({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+      <div className="mt-3 flex shrink-0 items-center justify-between text-[10px] text-slate-500">
         <span>Current time: {currentTime.toFixed(2)}s</span>
         <span>
           {activeChunk ? `Active chunk: ${activeChunk.id.slice(0, 6)}…` : "No active chunk"}

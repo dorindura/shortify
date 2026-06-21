@@ -27,7 +27,17 @@ export default function JobCard({
   const isProcessing = job.status === "processing";
   const isDone = job.status === "done";
   const isFailed = job.status === "failed";
-  const isReviewStep = job.jobGoal === "shorts" && job.reviewReady;
+  const isShortsReviewStep = job.jobGoal === "shorts" && job.reviewReady;
+  const isMultiSourceReviewStep = job.jobGoal === "multi_source_edit" && job.reviewReady;
+  const hasQuoteReelScript = (job.quoteReelMeta?.finalScript ?? "").trim().length >= 20;
+  const isRecoverableQuoteReelRender =
+    job.jobGoal === "quote_reel" &&
+    job.status === "pending" &&
+    job.stage === "queued" &&
+    hasQuoteReelScript;
+  const isQuoteReelScriptReviewStep =
+    job.jobGoal === "quote_reel" && (job.reviewReady || isRecoverableQuoteReelRender);
+  const isReviewStep = isShortsReviewStep || isMultiSourceReviewStep || isQuoteReelScriptReviewStep;
 
   return (
     <div className="rounded-xl border border-slate-800/90 bg-slate-950/90 p-3 text-xs shadow-sm shadow-black/40">
@@ -46,9 +56,18 @@ export default function JobCard({
                       : "bg-rose-500/10 text-rose-400"
               }`}
             >
-              {isPending && "⏳ PENDING"}
+              {isRecoverableQuoteReelRender && "📝 RESUME RENDER"}
+              {isPending && !isRecoverableQuoteReelRender && "⏳ PENDING"}
               {isProcessing && "⚙️ PROCESSING"}
-              {!isPending && !isProcessing && isReviewStep && "📝 READY FOR REVIEW"}
+              {!isPending &&
+                !isProcessing &&
+                isQuoteReelScriptReviewStep &&
+                (isRecoverableQuoteReelRender ? "📝 RESUME RENDER" : "📝 SCRIPT REVIEW")}
+              {!isPending &&
+                !isProcessing &&
+                !isQuoteReelScriptReviewStep &&
+                isReviewStep &&
+                "📝 READY FOR REVIEW"}
               {isDone && !isReviewStep && "✅ DONE"}
               {isFailed && "⚠️ FAILED"}
               {!isPending && !isProcessing && !isDone && !isFailed && job.status.toUpperCase()}
@@ -62,13 +81,17 @@ export default function JobCard({
                 {deletingJobs[job.id] ? "Deleting..." : "Delete"}
               </button>
             )}
-            {job.jobGoal === "shorts" && job.reviewReady && (
+            {isReviewStep && (
               <button
                 type="button"
                 onClick={() => openReview(job)}
                 className="rounded-full border border-emerald-500/60 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
               >
-                Open Review
+                {isRecoverableQuoteReelRender
+                  ? "Resume Render"
+                  : isQuoteReelScriptReviewStep
+                    ? "Edit Script"
+                    : "Open Review"}
               </button>
             )}
           </div>
@@ -95,11 +118,18 @@ export default function JobCard({
               ? "Summary"
               : job.jobGoal === "quote_reel"
                 ? "Quote Reel"
-                : "Shorts"}
+                : job.jobGoal === "multi_source_edit"
+                  ? "Multi-source Edit"
+                  : "Shorts"}
             {job.jobGoal === "summary" && job.summaryTargetSec
               ? ` (~${job.summaryTargetSec}s)`
-              : job.jobGoal === "quote_reel" && job.quoteReelMeta?.recommendedDurationSec
-                ? ` (~${job.quoteReelMeta.recommendedDurationSec}s)`
+              : job.jobGoal === "quote_reel" &&
+                  (job.quoteReelMeta?.actualDurationSec || job.quoteReelMeta?.targetDurationSec)
+                ? ` (~${Math.round(
+                    job.quoteReelMeta?.actualDurationSec ??
+                      job.quoteReelMeta?.targetDurationSec ??
+                      0,
+                  )}s)`
                 : ""}
           </span>
         )}
@@ -134,19 +164,90 @@ export default function JobCard({
         )}
       </div>
 
-      {job.quoteReelMeta?.quote && (
+      {job.jobGoal === "quote_reel" && (
         <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-900/60 p-3">
-          <div className="text-[11px] font-semibold text-slate-200">Generated quote</div>
-          <div className="mt-1 text-[12px] text-slate-100 italic">“{job.quoteReelMeta.quote}”</div>
-          {job.quoteReelMeta.author && (
-            <div className="mt-1 text-[10px] text-slate-400">— {job.quoteReelMeta.author}</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold text-slate-200">AI Story Reel</div>
+            {job.quoteReelMeta?.voiceover?.enabled && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5 text-[9px] text-fuchsia-200">
+                Voice:{" "}
+                {job.quoteReelMeta?.voiceover?.voicePreset ??
+                  job.quoteReelMeta?.voicePreset ??
+                  "on"}
+              </span>
+            )}
+          </div>
+
+          {job.quoteReelMeta?.finalScript && (
+            <div className="mt-2 text-[11px] text-slate-300">
+              <div className="mb-1 text-[10px] font-semibold text-slate-400">Script preview</div>
+              <div className="line-clamp-5 whitespace-pre-wrap text-slate-200">
+                {job.quoteReelMeta.finalScript}
+              </div>
+            </div>
           )}
 
-          {job.quoteReelMeta.hashtags?.length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-slate-400">
+            {job.quoteReelMeta?.mode && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                Mode: {job.quoteReelMeta.mode === "manual_text" ? "Manual text" : "AI prompt"}
+              </span>
+            )}
+
+            {job.quoteReelMeta?.tone && (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                Tone: {job.quoteReelMeta.tone}
+              </span>
+            )}
+
+            {job.quoteReelMeta?.segments?.length ? (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                {job.quoteReelMeta.segments.length} segments
+              </span>
+            ) : null}
+
+            {job.quoteReelMeta?.selectedAssets?.length ? (
+              <span className="rounded-full bg-slate-950/80 px-2 py-0.5">
+                {job.quoteReelMeta.selectedAssets.length} video picks
+              </span>
+            ) : null}
+          </div>
+
+          {job.quoteReelMeta?.hashtags?.length ? (
             <div className="mt-2 text-[10px] text-slate-500">
               {job.quoteReelMeta.hashtags.join(" ")}
             </div>
           ) : null}
+        </div>
+      )}
+
+      {job.quoteReelMeta?.posterUrl && (
+        <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/60 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold text-slate-300">TikTok poster</div>
+            <a
+              href={job.quoteReelMeta.posterUrl}
+              download
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-slate-700 px-2 py-0.5 text-[9px] text-slate-300 hover:bg-slate-900"
+            >
+              Download
+            </a>
+          </div>
+          <a href={job.quoteReelMeta.posterUrl} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={job.quoteReelMeta.posterUrl}
+              alt={job.quoteReelMeta.posterQuote ?? "Quote poster"}
+              className="mt-2 w-28 rounded-md border border-slate-800"
+            />
+          </a>
+          {job.quoteReelMeta.posterQuote && (
+            <div className="mt-1 text-[10px] text-slate-400 italic">
+              “{job.quoteReelMeta.posterQuote}”
+            </div>
+          )}
         </div>
       )}
 
@@ -193,6 +294,18 @@ export default function JobCard({
       {job.jobGoal === "shorts" && job.reviewReady && (
         <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-200">
           This shorts job is waiting for caption/overlay review before final render.
+        </div>
+      )}
+
+      {job.jobGoal === "multi_source_edit" && job.reviewReady && (
+        <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[10px] text-cyan-200">
+          This multi-source edit is ready for final timeline review before final render.
+        </div>
+      )}
+
+      {job.jobGoal === "quote_reel" && job.reviewReady && (
+        <div className="mt-3 rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/10 px-3 py-2 text-[10px] text-fuchsia-100">
+          This Quote Reel is waiting for script edits before voiceover and final render.
         </div>
       )}
 

@@ -146,7 +146,7 @@ export async function createEndingAsset(ending: EndingConfig): Promise<string | 
   const subStrokeWidth = 2;
 
   const emojiSize = isCardEnding ? 78 : 82;
-  const emojiGap = 10;
+  const emojiGap = 0;
   const lineGap = isCardEnding ? 18 : 14;
 
   const padX = isCardEnding ? 42 : 26;

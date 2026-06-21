@@ -9,16 +9,37 @@ import { enforceJobLimits } from "@server/billing/enforceLimits";
 import { requireUser } from "@server/auth/requireUser";
 import { supabaseAdmin } from "@server/supabaseAdmin";
 
+type UrlJobBody = {
+  url?: unknown;
+  selectionMode?: unknown;
+  customRanges?: unknown;
+  jobGoal?: unknown;
+  outputMode?: unknown;
+  summaryTargetSec?: unknown;
+  aspect?: unknown;
+  clipDurationSec?: unknown;
+  maxClips?: unknown;
+  captionsEnabled?: unknown;
+  captionStyle?: unknown;
+};
+
 export async function registerUrlRoute(app: FastifyInstance) {
   app.post("/api/url", async (req, reply) => {
     const user = await requireUser(req, reply);
     if (!user) return;
 
-    const body = (req.body ?? {}) as any;
+    const body = (req.body ?? {}) as UrlJobBody;
 
     const selectionMode = body.selectionMode === "custom" ? "custom" : "auto";
 
     const customRanges = Array.isArray(body.customRanges) ? body.customRanges : [];
+    const customClipCount =
+      selectionMode === "custom"
+        ? customRanges.filter((item: unknown) => {
+            const clip = (item ?? {}) as { ranges?: unknown; startSec?: unknown };
+            return Array.isArray(clip.ranges) ? clip.ranges.length > 0 : clip.startSec != null;
+          }).length
+        : 0;
 
     if (!body || typeof body.url !== "string") {
       return reply.code(400).send({ error: "Missing url" });
@@ -26,6 +47,14 @@ export async function registerUrlRoute(app: FastifyInstance) {
 
     const jobGoalRaw = String(body.jobGoal ?? "shorts");
     const jobGoal = jobGoalRaw === "summary" ? "summary" : "shorts";
+    const outputModeRaw = String(body.outputMode ?? "shorts");
+    const isLocalOutputMode = outputModeRaw === "full_x2_local";
+
+    if (isLocalOutputMode && process.env.NODE_ENV === "production") {
+      return reply.code(403).send({ error: "Local-only output mode is disabled in production" });
+    }
+
+    const outputMode = isLocalOutputMode ? "full_x2_local" : "shorts";
 
     const summaryTargetSecRaw = Number(body.summaryTargetSec ?? 90);
     const summaryTargetSec = Number.isFinite(summaryTargetSecRaw)
@@ -48,13 +77,22 @@ export async function registerUrlRoute(app: FastifyInstance) {
         ? body.clipDurationSec
         : 30;
 
-    const maxClips = typeof body.maxClips === "number" && body.maxClips > 0 ? body.maxClips : 3;
+    const maxClips =
+      selectionMode === "custom" && customClipCount > 0
+        ? customClipCount
+        : typeof body.maxClips === "number" && body.maxClips > 0
+          ? body.maxClips
+          : 3;
 
     const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
 
     const rawStyle = body.captionStyle as CaptionStyle | undefined;
     const captionStyle: CaptionStyle =
-      rawStyle === "boldYellow" || rawStyle === "subtle" || rawStyle === "karaoke"
+      rawStyle === "boldYellow" ||
+      rawStyle === "subtle" ||
+      rawStyle === "karaoke" ||
+      rawStyle === "wordByWord" ||
+      rawStyle === "progressiveWords"
         ? rawStyle
         : "karaoke";
 
@@ -96,6 +134,7 @@ export async function registerUrlRoute(app: FastifyInstance) {
       progress: 0,
       shortsConfig: {
         selectionMode,
+        outputMode: jobGoal === "shorts" ? outputMode : "shorts",
         customRanges,
       },
     };

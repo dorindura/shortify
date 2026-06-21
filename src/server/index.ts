@@ -19,11 +19,14 @@ async function main() {
   const { registerDownloadRoute } = await import("./routes/download");
   const { registerAdminRoutes } = await import("./routes/admin");
   const { registerQuoteReelRoute } = await import("./routes/quoteReel");
+  const { registerQuoteReelReviewRoute } = await import("./routes/quoteReelReview");
   const { registerJobReviewRoute } = await import("./routes/review");
   const { registerJobRenderRoute } = await import("./routes/render");
-  const { registerJobClipPreviewRoute } = await import(
-    "./routes/jobClipPreview"
-  );
+  const { registerJobClipPreviewRoute } = await import("./routes/jobClipPreview");
+  const { registerMultiSourceEditRoute } = await import("./routes/multiSourceEdit");
+  const { registerMultiSourceEditReviewRoute } = await import("./routes/multiSourceEditReview");
+  const { registerMultiSourceEditRenderRoute } = await import("./routes/multiSourceEditRender");
+  const { UPLOAD_MAX_FILE_BYTES, formatBytes } = await import("./uploadLimits");
 
   const app = Fastify({
     logger: true,
@@ -49,7 +52,22 @@ async function main() {
   });
 
   await app.register(multipart, {
-    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+    limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+  });
+
+  app.setErrorHandler((error, req, reply) => {
+    const maybeError = error as { code?: string };
+
+    if (maybeError?.code === "FST_REQ_FILE_TOO_LARGE") {
+      return reply.code(413).send({
+        error: `Uploaded file is too large. Maximum upload size is ${formatBytes(
+          UPLOAD_MAX_FILE_BYTES,
+        )}.`,
+      });
+    }
+
+    req.log.error(error);
+    return reply.send(error);
   });
 
   app.get("/health", async () => ({ ok: true }));
@@ -60,9 +78,13 @@ async function main() {
   await registerDownloadRoute(app);
   await registerAdminRoutes(app);
   await registerQuoteReelRoute(app);
+  await registerQuoteReelReviewRoute(app);
   await registerJobReviewRoute(app);
   await registerJobRenderRoute(app);
   await registerJobClipPreviewRoute(app);
+  await registerMultiSourceEditRoute(app);
+  await registerMultiSourceEditReviewRoute(app);
+  await registerMultiSourceEditRenderRoute(app);
 
   const port = Number(process.env.PORT ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });

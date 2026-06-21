@@ -21,6 +21,7 @@ import {
   createClipsFromVideoUsingRanges,
 } from "@server/video/clip";
 import { renderPreviewClips, renderShortsWithSubtitles } from "@server/video/render";
+import { renderFullVideoAtSpeed } from "@server/video/fullSpeed";
 import {
   analyzeTranscriptForClips,
   analyzeTranscriptForSummary,
@@ -31,6 +32,7 @@ import { extractAudioForWhisper } from "@server/video/audio";
 import { analyzeAudioEnergyForClip } from "@server/video/audioEnergy";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
 import { processQuoteReelJob } from "@server/jobs/processQuoteReelJob";
+import { processMultiSourceEditJob } from "@server/jobs/processMultiSourceEditJob";
 import {
   type CaptionDraftClip,
   generateCaptionDraftsForClips,
@@ -38,9 +40,61 @@ import {
 } from "@server/video/caption";
 
 type SubtitleFile = string | { path: string };
+type CustomClipRange = { start: number; end: number };
+type CustomClipGroup = { ranges: CustomClipRange[] };
+type CustomRangeInput = {
+  startSec?: unknown;
+  endSec?: unknown;
+  start?: unknown;
+  end?: unknown;
+};
+type CustomClipInput = CustomRangeInput & {
+  ranges?: unknown;
+};
 
 function subtitleToPath(s: SubtitleFile): string {
   return typeof s === "string" ? s : s.path;
+}
+
+function normalizeCustomClipGroups(input: unknown): CustomClipGroup[] {
+  if (!Array.isArray(input)) return [];
+
+  const groups = input
+    .map((raw: unknown) => {
+      const clip = (raw ?? {}) as CustomClipInput;
+      const rawRanges = Array.isArray(clip.ranges) ? clip.ranges : [clip];
+
+      const ranges = rawRanges
+        .map((rangeRaw: unknown) => {
+          const range = (rangeRaw ?? {}) as CustomRangeInput;
+
+          return {
+            start: Math.max(0, Number(range.startSec ?? range.start ?? 0)),
+            end: Number(range.endSec ?? range.end ?? 0),
+          };
+        })
+        .filter(
+          (range: CustomClipRange) =>
+            Number.isFinite(range.start) &&
+            Number.isFinite(range.end) &&
+            range.end > range.start &&
+            range.end - range.start >= 0.6,
+        )
+        .sort((a: CustomClipRange, b: CustomClipRange) => a.start - b.start);
+
+      return { ranges };
+    })
+    .filter((group: CustomClipGroup) => group.ranges.length > 0);
+
+  return groups;
+}
+
+function isLocalFullSpeedOutput(shortsConfig: unknown) {
+  return (
+    typeof shortsConfig === "object" &&
+    shortsConfig != null &&
+    (shortsConfig as { outputMode?: unknown }).outputMode === "full_x2_local"
+  );
 }
 
 export async function processJob(jobId: string) {
@@ -51,6 +105,11 @@ export async function processJob(jobId: string) {
 
   if (job.job_goal === "quote_reel") {
     await processQuoteReelJob(jobId);
+    return;
+  }
+
+  if (job.job_goal === "multi_source_edit") {
+    await processMultiSourceEditJob(jobId);
     return;
   }
 
@@ -79,6 +138,35 @@ export async function processJob(jobId: string) {
       typeof job.summary_target_sec === "number" ? job.summary_target_sec : 90;
     const shortsConfig = job.shorts_config ?? null;
     const isCustomSelection = !!shortsConfig && shortsConfig.selectionMode === "custom";
+
+    if (jobGoal === "shorts" && isLocalFullSpeedOutput(shortsConfig)) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("Local full x2 output is disabled in production.");
+      }
+
+      await dbUpdateJobStage(jobId, "rendering", 70);
+      const outputPath = await renderFullVideoAtSpeed(videoInput, {
+        jobId,
+        speed: 2,
+      });
+
+      await dbSetJobClips(jobId, [videoInput]);
+      await dbSetJobCaptionedResults(jobId, [`local:${outputPath}`], []);
+      await dbSetJobReviewReady(jobId, false);
+      await dbUpdateJobStage(jobId, "finished", 100);
+      await dbUpdateJobStatus(jobId, "done");
+
+      await cleanupLocalJobArtifacts({
+        downloadedVideoPath: downloadedVideoPath ?? undefined,
+        clipPaths: [],
+        audioPaths,
+        subtitlePaths: [],
+        extraPaths: [],
+      });
+
+      console.log(`[processJob] Local full x2 output created: ${outputPath}`);
+      return;
+    }
 
     // --- AI CLIP ANALYSIS ---
     await dbUpdateJobStage(jobId, "captioning", 25);
@@ -136,26 +224,33 @@ export async function processJob(jobId: string) {
 
           console.log("[processJob] Using custom clip ranges");
 
-          const ranges = shortsConfig.customRanges
-            .map((r: any) => ({
-              start: Math.max(0, Number(r.startSec ?? 0)),
-              end: Number(r.endSec ?? 0),
-            }))
-            .filter(
-              (r: { start: number; end: number }) =>
-                Number.isFinite(r.start) &&
-                Number.isFinite(r.end) &&
-                r.end > r.start &&
-                r.end - r.start >= 0.6,
-            );
+          const customClipGroups = normalizeCustomClipGroups(shortsConfig.customRanges);
 
-          if (!ranges.length) {
+          if (!customClipGroups.length) {
             throw new Error("No valid custom clip ranges after validation.");
           }
 
           await dbUpdateJobStage(jobId, "scoring", 35);
 
-          clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
+          for (const group of customClipGroups) {
+            const parts = await createClipsFromVideoUsingRanges(videoInput, group.ranges);
+
+            if (parts.length === 0) continue;
+
+            if (parts.length === 1) {
+              clips.push(parts[0]);
+              continue;
+            }
+
+            const combinedClip = await concatClipsToSingleVideo(parts);
+            extraCleanupPaths.push(...parts);
+            clips.push(combinedClip);
+          }
+
+          if (!clips.length) {
+            throw new Error("No custom clips could be created from the provided ranges.");
+          }
+
           usedAICandidates = true;
         } else {
           const candidates: ClipCandidate[] = await analyzeTranscriptForClips(videoInput, {
@@ -269,6 +364,7 @@ export async function processJob(jobId: string) {
     // Summary continues to final render from drafts
     const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, clips, {
       captionStyle: style,
+      fontName: "Inter",
     });
 
     const subtitlePaths: string[] = Array.isArray(subtitleFiles)

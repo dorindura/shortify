@@ -1,42 +1,122 @@
 import path from "path";
 import {
   dbGetJob,
+  dbSetJobCaptionDrafts,
   dbSetJobCaptionedResults,
+  dbSetJobReviewReady,
   dbUpdateJobQuoteMeta,
   dbUpdateJobStage,
   dbUpdateJobStatus,
 } from "@/server/jobs/jobsDb";
 import { uploadLocalFileToStorage } from "@/server/storage/upload";
 import { cleanupLocalJobArtifacts } from "@/server/storage/cleanup";
-import { generateQuoteReelPlan } from "@/server/ai/quoteReelGenerator";
-import { listImagesFromFolders, pickRandomImages } from "@/server/assets/quoteReelAssets";
-import { renderQuoteReelFromImages } from "@/server/video/quoteReelRender";
+import {
+  buildQuoteReelPlanFromFinalScript,
+  generateQuoteReelScriptPlan,
+} from "@/server/ai/quoteReelScriptGenerator";
+import {
+  listQuoteReelVideoAssets,
+  pickAssetsForQuoteReelSegments,
+} from "@/server/assets/quoteReelVideoAssets";
+import {
+  fitVoiceoverToMaxDuration,
+  generateVoiceoverFromText,
+} from "@/server/ai/elevenLabsVoiceover";
+import {
+  assembleCartoonQuoteReel,
+  assembleQuoteReel,
+} from "@/server/video/quoteReelAssembly";
+import { generateQuoteReelPoster } from "@/server/video/quoteReelPoster";
+import {
+  type CaptionDraftClip,
+  generateCaptionDraftsForAudioFiles,
+  generateCaptionDraftsForClips,
+  generateSubtitlesFromDrafts,
+} from "@/server/video/caption";
+import { renderShortsWithSubtitles } from "@/server/video/render";
+import type {
+  CaptionStyle,
+  QuoteReelCaptionPreset,
+  QuoteReelMeta,
+  QuoteReelMode,
+  QuoteReelTone,
+  QuoteReelVisualSource,
+  QuoteReelVoicePreset,
+} from "@/lib/jobsStore";
 
-type RawQuoteReelMeta = {
-  tone?: "aggressive" | "cinematic" | "calm" | "dark";
-  // overlayHandle?: string;
-  quote?: string;
-  author?: string;
-  instagramCaption?: string;
-  hashtags?: string[];
-  primaryFolder?: string;
-  fallbackFolder?: string;
-  selectedImages?: string[];
-  recommendedDurationSec?: number;
-  recommendedImageCount?: number;
-  musicSuggestion?: {
-    label: string;
-    searchQuery: string;
-    reason?: string;
-  };
-};
+type SubtitleFile = string | { path: string };
 
-const UNIQUE_IMAGE_COUNT = 15;
-const IMAGE_LOOPS = 4;
-const SECONDS_PER_IMAGE = 0.32;
+function isQuoteReelCaptionPreset(value: unknown): value is QuoteReelCaptionPreset {
+  return (
+    value === "card_bottom_karaoke" ||
+    value === "card_center_word_by_word" ||
+    value === "card_center_progressive_words" ||
+    value === "card_center_premium_word" ||
+    value === "card_bottom_premium_karaoke"
+  );
+}
+
+function subtitleToPath(s: SubtitleFile): string {
+  return typeof s === "string" ? s : s.path;
+}
+
+function toLocalAssetPath(assetPath: string): string {
+  if (!assetPath) return assetPath;
+
+  if (assetPath.startsWith("/shorts/") || assetPath.startsWith("/thumbs/")) {
+    return path.join(process.cwd(), "public", assetPath.replace(/^\/+/, ""));
+  }
+
+  return assetPath;
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function isCaptionStyle(value: unknown): value is CaptionStyle {
+  return (
+    value === "boldYellow" ||
+    value === "subtle" ||
+    value === "karaoke" ||
+    value === "wordByWord" ||
+    value === "progressiveWords"
+  );
+}
+
+function isQuoteReelMode(value: unknown): value is QuoteReelMode {
+  return value === "manual_text" || value === "ai_text";
+}
+
+function isQuoteReelTone(value: unknown): value is QuoteReelTone {
+  return (
+    value === "aggressive" ||
+    value === "cinematic" ||
+    value === "calm" ||
+    value === "dark" ||
+    value === "emotional" ||
+    value === "stoic"
+  );
+}
+
+function isQuoteReelVisualSource(value: unknown): value is QuoteReelVisualSource {
+  return value === "auto" || value === "cartoons";
+}
+
+function isQuoteReelVoicePreset(value: unknown): value is QuoteReelVoicePreset {
+  return (
+    value === "dark_male" ||
+    value === "storyteller" ||
+    value === "soft_female" ||
+    value === "motivational_male" ||
+    value === "neutral"
+  );
+}
+
+function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
+  const value = process.env.QUOTE_REEL_CAPTION_PRESET?.trim();
+
+  return isQuoteReelCaptionPreset(value) ? value : "card_bottom_premium_karaoke";
 }
 
 export async function processQuoteReelJob(jobId: string) {
@@ -46,94 +126,428 @@ export async function processQuoteReelJob(jobId: string) {
     throw new Error(`Job ${jobId} is not quote_reel`);
   }
 
-  const cleanupPaths: string[] = [];
-  const existingMeta: RawQuoteReelMeta = job.quote_reel_meta ?? {};
+  const cleanupClipPaths: string[] = [];
+  const cleanupAudioPaths: string[] = [];
+  const cleanupSubtitlePaths: string[] = [];
+  const cleanupExtraPaths: string[] = [];
+
+  const existingMeta: QuoteReelMeta = (job.quote_reel_meta ?? {}) as QuoteReelMeta;
 
   try {
     await dbUpdateJobStatus(jobId, "processing");
-    await dbUpdateJobStage(jobId, "planning", 10);
+    await dbUpdateJobStage(jobId, "planning", 8);
 
-    const prompt = job.quote_prompt?.trim() || "discipline and success";
-    const tone = existingMeta.tone ?? "cinematic";
-    // const overlayHandle = existingMeta.overlayHandle?.trim() ?? "";
+    const mode: QuoteReelMode = isQuoteReelMode(existingMeta.mode)
+      ? existingMeta.mode
+      : existingMeta.sourceText
+        ? "manual_text"
+        : "ai_text";
 
-    const plan = await generateQuoteReelPlan({
-      prompt,
-      tone,
-    });
+    const tone: QuoteReelTone = isQuoteReelTone(existingMeta.tone)
+      ? existingMeta.tone
+      : "cinematic";
 
-    const uniqueImageCount = UNIQUE_IMAGE_COUNT;
-    const loopedImageCount = uniqueImageCount * IMAGE_LOOPS;
-    const durationSec = clamp(Math.round(loopedImageCount * SECONDS_PER_IMAGE), 18, 24);
+    const visualSource: QuoteReelVisualSource = isQuoteReelVisualSource(existingMeta.visualSource)
+      ? existingMeta.visualSource
+      : "auto";
+
+    const captionStyle: CaptionStyle = isCaptionStyle(existingMeta.captionStyle)
+      ? existingMeta.captionStyle
+      : isCaptionStyle(job.caption_style)
+        ? job.caption_style
+        : "karaoke";
+
+    const captionsEnabled =
+      typeof existingMeta.captionsEnabled === "boolean"
+        ? existingMeta.captionsEnabled
+        : typeof job.captions_enabled === "boolean"
+          ? job.captions_enabled
+          : true;
+
+    const voiceEnabled =
+      typeof existingMeta.voiceEnabled === "boolean" ? existingMeta.voiceEnabled : true;
+
+    const posterEnabled =
+      typeof existingMeta.posterEnabled === "boolean" ? existingMeta.posterEnabled : false;
+
+    const voicePreset: QuoteReelVoicePreset = isQuoteReelVoicePreset(existingMeta.voicePreset)
+      ? existingMeta.voicePreset
+      : isQuoteReelVoicePreset(existingMeta.voiceover?.voicePreset)
+        ? (existingMeta.voiceover?.voicePreset as QuoteReelVoicePreset)
+        : "storyteller";
+
+    const captionPreset: QuoteReelCaptionPreset = isQuoteReelCaptionPreset(
+      existingMeta.captionPreset,
+    )
+      ? existingMeta.captionPreset
+      : getDefaultQuoteReelCaptionPreset();
+
+    const maxDurationSec = clamp(Number(existingMeta.maxDurationSec ?? 105), 50, 240);
+    const minDurationSec = clamp(Number(existingMeta.minDurationSec ?? 62), 45, maxDurationSec);
+    const targetDurationSec = clamp(Number(existingMeta.targetDurationSec ?? 75), minDurationSec, maxDurationSec);
+
+    const sourceText =
+      typeof existingMeta.sourceText === "string" ? existingMeta.sourceText.trim() : "";
+    const prompt = typeof job.quote_prompt === "string" ? job.quote_prompt.trim() : "";
 
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
+      mode,
       tone,
-      // overlayHandle: overlayHandle,
-      quote: plan.quote,
-      author: plan.author,
-      instagramCaption: plan.instagramCaption,
-      hashtags: plan.hashtags,
-      primaryFolder: plan.primaryFolder,
-      fallbackFolder: plan.fallbackFolder,
-      recommendedDurationSec: durationSec,
-      recommendedImageCount: uniqueImageCount,
-      musicSuggestion: plan.musicSuggestion,
+      visualSource,
+      captionsEnabled,
+      captionStyle,
+      captionPreset,
+      voiceEnabled,
+      voicePreset,
+      voiceover: {
+        ...(existingMeta.voiceover ?? {}),
+        enabled: voiceEnabled,
+        voicePreset,
+      },
+      targetDurationSec,
+      minDurationSec,
+      maxDurationSec,
     });
 
-    await dbUpdateJobStage(jobId, "clipping", 35);
+    await dbUpdateJobStage(jobId, "script_generation", 18);
 
-    const availableImages = await listImagesFromFolders([plan.primaryFolder]);
+    const scriptReviewRequired = existingMeta.scriptReviewRequired !== false;
+    const scriptReviewApproved = existingMeta.scriptReviewApproved === true;
 
-    const selectedUniqueImages = pickRandomImages({
-      images: availableImages,
-      targetCount: uniqueImageCount,
+    const scriptPlan =
+      scriptReviewApproved && typeof existingMeta.finalScript === "string"
+        ? buildQuoteReelPlanFromFinalScript({
+            finalScript: existingMeta.finalScript,
+            tone,
+            targetDurationSec,
+            minDurationSec,
+            maxDurationSec,
+            addCta: true,
+            sourceMode: mode,
+            sourceText: existingMeta.sourceText,
+            generatedText: existingMeta.generatedText,
+            instagramCaption: existingMeta.instagramCaption,
+            hashtags: existingMeta.hashtags,
+            musicSuggestions: existingMeta.musicSuggestions,
+          })
+        : await generateQuoteReelScriptPlan({
+            mode,
+            tone,
+            text: mode === "manual_text" ? sourceText : undefined,
+            prompt: mode === "ai_text" ? prompt : undefined,
+            targetDurationSec,
+            minDurationSec,
+            maxDurationSec,
+            addCta: true,
+          });
+
+    await dbUpdateJobQuoteMeta(jobId, {
+      ...existingMeta,
+      mode,
+      tone,
+      visualSource,
+      sourceText: scriptPlan.sourceText,
+      generatedText: scriptPlan.generatedText,
+      finalScript: scriptPlan.finalScript,
+      originalFinalScript: existingMeta.originalFinalScript ?? scriptPlan.finalScript,
+      scriptReviewRequired,
+      scriptReviewApproved,
+      scriptEdited: existingMeta.scriptEdited ?? false,
+      targetDurationSec,
+      minDurationSec,
+      maxDurationSec,
+      captionsEnabled,
+      captionStyle,
+      captionPreset,
+      voiceEnabled,
+      voicePreset,
+      voiceover: {
+        ...(existingMeta.voiceover ?? {}),
+        enabled: voiceEnabled,
+        voicePreset,
+      },
+      segments: scriptPlan.segments,
+      instagramCaption: scriptPlan.instagramCaption,
+      hashtags: scriptPlan.hashtags,
+      musicSuggestions: scriptPlan.musicSuggestions,
+      selectedAssets: [],
+    });
+
+    if (scriptReviewRequired && !scriptReviewApproved) {
+      await dbSetJobReviewReady(jobId, true);
+      await dbUpdateJobStage(jobId, "review_ready", 100);
+      await dbUpdateJobStatus(jobId, "done");
+      return;
+    }
+
+    await dbSetJobReviewReady(jobId, false);
+
+    let voiceoverAudioPath: string | undefined;
+    let actualTargetDurationSec = targetDurationSec;
+    let voiceoverMetaPatch: QuoteReelMeta["voiceover"] = {
+      ...(existingMeta.voiceover ?? {}),
+      enabled: voiceEnabled,
+      voicePreset,
+    };
+
+    if (voiceEnabled) {
+      await dbUpdateJobStage(jobId, "voiceover", 34);
+
+      const voiceover = await generateVoiceoverFromText({
+        text: scriptPlan.finalScript,
+        tone,
+        voicePreset,
+      });
+
+      cleanupAudioPaths.push(voiceover.audioPath);
+
+      const fittedVoiceover = await fitVoiceoverToMaxDuration({
+        audioPath: voiceover.audioPath,
+        durationSec: voiceover.durationSec,
+        maxDurationSec,
+        captionDraft: voiceover.captionDraft,
+      });
+
+      voiceoverAudioPath = fittedVoiceover.audioPath;
+
+      if (fittedVoiceover.audioPath !== voiceover.audioPath) {
+        cleanupAudioPaths.push(fittedVoiceover.audioPath);
+      }
+
+      actualTargetDurationSec = clamp(
+        Math.max(fittedVoiceover.durationSec, minDurationSec),
+        minDurationSec,
+        maxDurationSec,
+      );
+
+      voiceoverMetaPatch = {
+        enabled: true,
+        voicePreset: voiceover.voicePreset,
+        voiceId: voiceover.voiceId,
+        modelId: voiceover.modelId,
+        audioPath: fittedVoiceover.audioPath,
+        durationSec: fittedVoiceover.durationSec,
+        captionDraft: fittedVoiceover.captionDraft,
+      };
+
+      await dbUpdateJobQuoteMeta(jobId, {
+        ...existingMeta,
+        mode,
+        tone,
+        visualSource,
+        sourceText: scriptPlan.sourceText,
+        generatedText: scriptPlan.generatedText,
+        finalScript: scriptPlan.finalScript,
+        targetDurationSec,
+        minDurationSec,
+        maxDurationSec,
+        actualDurationSec: fittedVoiceover.durationSec,
+        captionsEnabled,
+        captionStyle,
+        captionPreset,
+        voiceEnabled,
+        voicePreset,
+        segments: scriptPlan.segments,
+        instagramCaption: scriptPlan.instagramCaption,
+        hashtags: scriptPlan.hashtags,
+        musicSuggestions: scriptPlan.musicSuggestions,
+        selectedAssets: [],
+        voiceover: voiceoverMetaPatch,
+      });
+    }
+
+    await dbUpdateJobStage(jobId, "asset_selection", 48);
+
+    const assetPicks = await pickAssetsForQuoteReelSegments({
+      segments: scriptPlan.segments,
+      tone,
+      visualSource,
     });
 
     await dbUpdateJobQuoteMeta(jobId, {
       ...existingMeta,
+      mode,
       tone,
-      // overlayHandle: overlayHandle,
-      quote: plan.quote,
-      author: plan.author,
-      instagramCaption: plan.instagramCaption,
-      hashtags: plan.hashtags,
-      primaryFolder: plan.primaryFolder,
-      fallbackFolder: plan.fallbackFolder,
-      selectedImages: selectedUniqueImages.map((img) => path.basename(img)),
-      recommendedDurationSec: durationSec,
-      recommendedImageCount: uniqueImageCount,
-      musicSuggestion: plan.musicSuggestion,
+      visualSource,
+      sourceText: scriptPlan.sourceText,
+      generatedText: scriptPlan.generatedText,
+      finalScript: scriptPlan.finalScript,
+      targetDurationSec,
+      minDurationSec,
+      maxDurationSec,
+      actualDurationSec: voiceoverMetaPatch?.durationSec ?? undefined,
+      captionsEnabled,
+      captionStyle,
+      captionPreset,
+      voiceEnabled,
+      voicePreset,
+      segments: scriptPlan.segments,
+      selectedAssets: assetPicks,
+      instagramCaption: scriptPlan.instagramCaption,
+      hashtags: scriptPlan.hashtags,
+      musicSuggestions: scriptPlan.musicSuggestions,
+      voiceover: voiceoverMetaPatch,
     });
 
-    await dbUpdateJobStage(jobId, "rendering", 65);
+    await dbUpdateJobStage(jobId, "assembling", 62);
 
-    const { videoPath, thumbPath } = await renderQuoteReelFromImages({
-      images: selectedUniqueImages,
-      totalDurationSec: durationSec,
-      loopCount: IMAGE_LOOPS,
-      quote: plan.quote,
-      author: plan.author,
-    });
+    const assembly =
+      visualSource === "cartoons"
+        ? await assembleCartoonQuoteReel({
+            cartoonClips: (await listQuoteReelVideoAssets("cartoons")).map(
+              (asset) => asset.assetPath,
+            ),
+            voiceoverAudioPath,
+            targetDurationSec: actualTargetDurationSec,
+          })
+        : await assembleQuoteReel({
+            aspect: "vertical",
+            segments: scriptPlan.segments,
+            assetPicks,
+            voiceoverAudioPath,
+            targetDurationSec: actualTargetDurationSec,
+          });
 
-    cleanupPaths.push(videoPath, thumbPath);
+    cleanupExtraPaths.push(...assembly.cleanupPaths);
 
-    await dbUpdateJobStage(jobId, "uploading", 88);
+    const baseVideoPath = assembly.finalVideoPath;
+    const baseThumbPath = assembly.thumbPath;
 
-    const uploadedVideo = await uploadLocalFileToStorage(videoPath, `jobs/${jobId}/quote-reel.mp4`);
+    let captionDrafts: CaptionDraftClip[] = [];
+    let finalVideoPath = baseVideoPath;
+    let finalThumbPath = baseThumbPath;
 
-    const uploadedThumb = await uploadLocalFileToStorage(
-      thumbPath,
-      `jobs/${jobId}/quote-reel-thumb.jpg`,
+    if (captionsEnabled) {
+      await dbUpdateJobStage(jobId, "captioning", 76);
+
+      captionDrafts = voiceoverMetaPatch?.captionDraft
+        ? [voiceoverMetaPatch.captionDraft]
+        : voiceoverAudioPath
+          ? await generateCaptionDraftsForAudioFiles([voiceoverAudioPath])
+          : await generateCaptionDraftsForClips([baseVideoPath]);
+
+      await dbSetJobCaptionDrafts(jobId, captionDrafts);
+
+      const subtitleFiles = await generateSubtitlesFromDrafts(captionDrafts, [baseVideoPath], {
+        captionStyle,
+        quoteReelCaptionPreset: captionPreset,
+        fontName: process.env.QUOTE_REEL_CAPTION_FONT?.trim() || "Inter",
+        captionOffsetSec: Number(process.env.QUOTE_REEL_CAPTION_OFFSET_SEC ?? 0),
+        premiumKeywords: (process.env.QUOTE_REEL_HIGHLIGHT_WORDS ?? "")
+          .split(",")
+          .map((word) => word.trim())
+          .filter(Boolean),
+      });
+
+      const subtitlePaths = subtitleFiles.map(subtitleToPath).filter(Boolean);
+      cleanupSubtitlePaths.push(...subtitlePaths);
+
+      await dbUpdateJobStage(jobId, "rendering", 86);
+
+      const rendered = await renderShortsWithSubtitles([baseVideoPath], subtitleFiles, {
+        aspect: "vertical",
+        style: captionStyle,
+        captionsEnabled: true,
+        fadeOutSec: 1.5,
+        normalizeAudio: true,
+        qualityPreset: "socialPremium",
+      });
+
+      finalVideoPath = toLocalAssetPath(rendered.videos[0]);
+      finalThumbPath = toLocalAssetPath(rendered.thumbs[0]);
+
+      cleanupExtraPaths.push(
+        ...rendered.videos.filter(Boolean),
+        ...rendered.thumbs.filter(Boolean),
+      );
+    } else {
+      await dbSetJobCaptionDrafts(jobId, []);
+      await dbUpdateJobStage(jobId, "rendering", 86);
+    }
+
+    await dbUpdateJobStage(jobId, "uploading", 94);
+
+    const uploadedVideo = await uploadLocalFileToStorage(
+      finalVideoPath,
+      `jobs/${jobId}/quote-reel.mp4`,
     );
 
+    const thumbExt = path.extname(finalThumbPath) || ".jpg";
+    const uploadedThumb = await uploadLocalFileToStorage(
+      finalThumbPath,
+      `jobs/${jobId}/quote-reel-thumb${thumbExt}`,
+    );
+
+    let posterUrl: string | undefined;
+    let posterQuote: string | undefined;
+    let posterImageCategory: string | undefined;
+
+    if (posterEnabled) {
+      try {
+        await dbUpdateJobStage(jobId, "poster", 96);
+
+        const poster = await generateQuoteReelPoster({
+          tone,
+          script: scriptPlan.finalScript,
+          topic: mode === "ai_text" ? prompt : undefined,
+        });
+
+        cleanupExtraPaths.push(...poster.cleanupPaths);
+
+        const uploadedPoster = await uploadLocalFileToStorage(
+          poster.posterPath,
+          `jobs/${jobId}/quote-reel-poster.jpg`,
+        );
+
+        posterUrl = uploadedPoster.publicUrl;
+        posterQuote = poster.quote;
+        posterImageCategory = poster.imageCategory;
+      } catch (posterError) {
+        // A poster failure should never fail the whole reel job.
+        console.error("[processQuoteReelJob] Poster generation failed:", posterError);
+      }
+    }
+
     await dbSetJobCaptionedResults(jobId, [uploadedVideo.publicUrl], [uploadedThumb.publicUrl]);
+
+    await dbUpdateJobQuoteMeta(jobId, {
+      ...existingMeta,
+      mode,
+      tone,
+      visualSource,
+      sourceText: scriptPlan.sourceText,
+      generatedText: scriptPlan.generatedText,
+      finalScript: scriptPlan.finalScript,
+      targetDurationSec,
+      minDurationSec,
+      maxDurationSec,
+      actualDurationSec: assembly.actualDurationSec,
+      captionsEnabled,
+      captionStyle,
+      captionPreset,
+      voiceEnabled,
+      voicePreset,
+      segments: scriptPlan.segments,
+      selectedAssets: assetPicks,
+      instagramCaption: scriptPlan.instagramCaption,
+      hashtags: scriptPlan.hashtags,
+      musicSuggestions: scriptPlan.musicSuggestions,
+      voiceover: voiceoverMetaPatch,
+      posterEnabled,
+      posterUrl,
+      posterQuote,
+      posterImageCategory,
+    });
 
     await dbUpdateJobStage(jobId, "finished", 100);
     await dbUpdateJobStatus(jobId, "done");
 
     await cleanupLocalJobArtifacts({
-      extraPaths: cleanupPaths,
+      clipPaths: cleanupClipPaths,
+      audioPaths: cleanupAudioPaths,
+      subtitlePaths: cleanupSubtitlePaths,
+      extraPaths: cleanupExtraPaths,
     });
   } catch (err) {
     console.error("[processQuoteReelJob] Error:", err);
@@ -142,7 +556,10 @@ export async function processQuoteReelJob(jobId: string) {
     await dbUpdateJobStage(jobId, "finished", 100);
 
     await cleanupLocalJobArtifacts({
-      extraPaths: cleanupPaths,
+      clipPaths: cleanupClipPaths,
+      audioPaths: cleanupAudioPaths,
+      subtitlePaths: cleanupSubtitlePaths,
+      extraPaths: cleanupExtraPaths,
     });
 
     throw err;
