@@ -1,4 +1,4 @@
-export type LocalJobAspect = "horizontal" | "vertical" | "verticalLetterbox";
+export type LocalJobAspect = "horizontal" | "vertical" | "verticalLetterbox" | "verticalFit";
 export type LocalCaptionStyle =
   | "boldYellow"
   | "subtle"

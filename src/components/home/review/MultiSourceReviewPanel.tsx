@@ -40,7 +40,7 @@ type EndingConfig = {
 
 type ReviewJob = {
   id: string;
-  aspect?: "horizontal" | "vertical" | "verticalLetterbox";
+  aspect?: "horizontal" | "vertical" | "verticalLetterbox" | "verticalFit";
   multiSourceEditConfig?: {
     draftVideoUrl?: string;
     reviewConfig?: {

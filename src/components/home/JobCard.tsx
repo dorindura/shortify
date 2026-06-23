@@ -140,7 +140,9 @@ export default function JobCard({
               ? "Vertical 9:16 (Crop)"
               : job.aspect === "verticalLetterbox"
                 ? "Vertical 9:16 (Bars)"
-                : "Horizontal 16:9"}
+                : job.aspect === "verticalFit"
+                  ? "Vertical 9:16 (16:9 Centered)"
+                  : "Horizontal 16:9"}
           </span>
         )}
 

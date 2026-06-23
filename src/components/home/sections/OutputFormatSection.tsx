@@ -29,8 +29,8 @@ export default function OutputFormatSection({
       </div>
 
       <div
-        className={`grid grid-cols-1 gap-3 ${
-          showLocalOutputModes ? "sm:grid-cols-4" : "sm:grid-cols-3"
+        className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+          showLocalOutputModes ? "lg:grid-cols-5" : "lg:grid-cols-4"
         }`}
       >
         <label className="group relative">
@@ -122,6 +122,42 @@ export default function OutputFormatSection({
 
               <p className="text-[11px] text-slate-400">
                 Keeps more of the full action visible with black bars.
+              </p>
+            </div>
+          </div>
+        </label>
+
+        <label className="group relative">
+          <input
+            type="radio"
+            name="aspect"
+            value="verticalFit"
+            checked={!useLocalFullX2 && aspect === "verticalFit"}
+            onChange={() => {
+              setShortsOutputMode("shorts");
+              setAspect("verticalFit");
+            }}
+            className="peer sr-only"
+          />
+          <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-sky-500/60 peer-checked:border-sky-500 peer-checked:bg-slate-900/80">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">16:9 Centered</span>
+              <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200">
+                Full frame
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex h-10 w-6 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+                <div className="flex h-full w-full flex-col justify-center">
+                  <div className="flex-1 bg-slate-950" />
+                  <div className="h-3 w-full bg-slate-800" />
+                  <div className="flex-1 bg-slate-950" />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                Whole 16:9 clip, full width, centered with big black bars. Nothing cropped.
               </p>
             </div>
           </div>

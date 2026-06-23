@@ -70,7 +70,7 @@ type Props = {
   captionStyle?: CaptionStyle;
   blackAndWhite?: boolean;
   ending?: EndingConfig;
-  aspect?: "horizontal" | "vertical" | "verticalLetterbox";
+  aspect?: "horizontal" | "vertical" | "verticalLetterbox" | "verticalFit";
   smartCrops?: (SmartCropBox | null)[];
   onTimeChange?: (time: number) => void;
   onDurationChange?: (duration: number) => void;

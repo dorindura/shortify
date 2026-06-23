@@ -61,7 +61,9 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
               {canRenderThumb && (
                 <div className="relative h-20 w-12 overflow-hidden rounded-md border border-slate-800/80 bg-slate-900/90">
                   <img src={thumb} alt={title} className="h-full w-full object-cover" />
-                  {(job.aspect === "vertical" || job.aspect === "verticalLetterbox") && (
+                  {(job.aspect === "vertical" ||
+                    job.aspect === "verticalLetterbox" ||
+                    job.aspect === "verticalFit") && (
                     <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[8px] text-slate-200">
                       9:16
                     </span>

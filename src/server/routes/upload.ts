@@ -42,7 +42,8 @@ export async function registerUploadRoute(app: FastifyInstance) {
     const aspect: JobAspect =
       aspectField === "horizontal" ||
       aspectField === "vertical" ||
-      aspectField === "verticalLetterbox"
+      aspectField === "verticalLetterbox" ||
+      aspectField === "verticalFit"
         ? aspectField
         : "horizontal";
 

@@ -68,7 +68,10 @@ export async function registerUrlRoute(app: FastifyInstance) {
 
     const rawAspect = body.aspect as JobAspect | undefined;
     const aspect: JobAspect =
-      rawAspect === "vertical" || rawAspect === "horizontal" || rawAspect === "verticalLetterbox"
+      rawAspect === "vertical" ||
+      rawAspect === "horizontal" ||
+      rawAspect === "verticalLetterbox" ||
+      rawAspect === "verticalFit"
         ? rawAspect
         : "horizontal";
 
