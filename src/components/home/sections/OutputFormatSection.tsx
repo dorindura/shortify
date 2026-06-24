@@ -175,14 +175,14 @@ export default function OutputFormatSection({
             />
             <div className="flex h-full cursor-pointer flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-950/80 px-4 py-3 text-xs text-slate-200 shadow-sm shadow-black/40 transition group-hover:border-emerald-500/60 peer-checked:border-emerald-500 peer-checked:bg-slate-900/80">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium">Full x2 local</span>
+                <span className="font-medium">Full video local</span>
                 <span className="rounded-full bg-slate-900/80 px-2 py-0.5 text-[10px] text-emerald-300">
                   Local
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex h-7 w-10 items-center justify-center rounded-lg border border-emerald-500/40 bg-slate-900 text-[10px] font-semibold text-emerald-300">
-                  2x
+                  1x
                 </div>
                 <p className="text-[11px] text-slate-400">
                   Saves the entire source video to local disk only.

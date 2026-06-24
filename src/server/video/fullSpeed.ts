@@ -62,7 +62,7 @@ export async function renderFullVideoAtSpeed(
   inputPath: string,
   opts: RenderFullSpeedOptions,
 ): Promise<string> {
-  const speed = Number.isFinite(opts.speed) && opts.speed ? opts.speed : 2;
+  const speed = Number.isFinite(opts.speed) && opts.speed ? opts.speed : 1;
   const safeSpeed = Math.max(0.25, Math.min(4, speed));
   const videoPts = (1 / safeSpeed).toFixed(6);
 

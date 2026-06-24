@@ -16,7 +16,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
       : job.jobGoal === "multi_source_edit"
         ? "Final edited video"
         : job.shortsConfig?.outputMode === "full_x2_local"
-          ? "Local full x2 output"
+          ? "Local full video output"
           : "Captioned shorts";
 
   return (
@@ -40,7 +40,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
               : job.jobGoal === "multi_source_edit"
                 ? "Final Video"
                 : isLocalResult
-                  ? "Full video x2"
+                  ? "Full video"
                   : `Short ${idx + 1}`;
 
           const filename =

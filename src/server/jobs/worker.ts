@@ -141,13 +141,13 @@ export async function processJob(jobId: string) {
 
     if (jobGoal === "shorts" && isLocalFullSpeedOutput(shortsConfig)) {
       if (process.env.NODE_ENV === "production") {
-        throw new Error("Local full x2 output is disabled in production.");
+        throw new Error("Local full video output is disabled in production.");
       }
 
       await dbUpdateJobStage(jobId, "rendering", 70);
       const outputPath = await renderFullVideoAtSpeed(videoInput, {
         jobId,
-        speed: 2,
+        speed: 1,
       });
 
       await dbSetJobClips(jobId, [videoInput]);
