@@ -291,9 +291,137 @@ function intersectionOverUnion(
   return intersection / union;
 }
 
+type LlmMoment = { start: number; end: number; title?: string; reason?: string };
+
 /**
- * Main entry: Analyze transcript and produce high-quality clip candidates
- * around ~25s (target), respecting min/max and avoiding overlaps.
+ * Ask an LLM to read the timestamped transcript and choose the best
+ * self-contained moments (hook -> payoff), ordered best first.
+ */
+async function selectMomentsWithLLM(
+  segments: WhisperSegment[],
+  duration: number,
+  opts: {
+    maxClips: number;
+    minDurationSec: number;
+    maxDurationSec: number;
+    targetDurationSec: number;
+  },
+): Promise<LlmMoment[]> {
+  const transcript = segments
+    .map((s) => `[${s.start.toFixed(1)}-${s.end.toFixed(1)}] ${s.text.trim()}`)
+    .join("\n");
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4.1",
+    temperature: 0.4,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert short-form video editor who finds the most engaging, self-contained moments in a long video for standalone vertical shorts (TikTok / Reels / YouTube Shorts).
+
+Each selected moment MUST:
+- be a complete, self-contained thought with a clear hook and payoff (never start or end mid-idea),
+- make sense on its own, without the rest of the video for context,
+- be genuinely compelling: a strong opinion, insight, story, surprising fact, emotional beat, or punchy exchange,
+- NOT overlap in time with any other selected moment.
+
+Order the moments best-first.`,
+      },
+      {
+        role: "user",
+        content: `Video length: ${Math.round(duration)} seconds.
+Pick exactly ${opts.maxClips} non-overlapping moments.
+Each must be between ${opts.minDurationSec} and ${opts.maxDurationSec} seconds long (aim for ~${opts.targetDurationSec}s).
+Use the timestamps (in seconds) from the transcript to set start and end.
+
+Transcript:
+${transcript}
+
+Return strict JSON: {"moments":[{"start":number,"end":number,"title":string,"reason":string}]}`,
+      },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content?.trim();
+  if (!raw) return [];
+
+  let parsed: { moments?: unknown };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed.moments)) return [];
+
+  const moments: LlmMoment[] = [];
+  for (const item of parsed.moments) {
+    if (!item || typeof item !== "object") continue;
+    const m = item as Record<string, unknown>;
+    const start = Number(m.start);
+    const end = Number(m.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    if (end - start < 3 || start < 0 || end > duration + 1) continue;
+
+    moments.push({
+      start: Math.max(0, start),
+      end: Math.min(duration, end),
+      title: typeof m.title === "string" ? m.title : undefined,
+      reason: typeof m.reason === "string" ? m.reason : undefined,
+    });
+  }
+
+  return moments;
+}
+
+/** Snap a desired [start,end] to segment boundaries and enforce min/max duration. */
+function normalizeWindow(
+  desiredStart: number,
+  desiredEnd: number,
+  segments: WhisperSegment[],
+  duration: number,
+  minDurationSec: number,
+  maxDurationSec: number,
+): { start: number; end: number } {
+  let start = clamp(desiredStart, 0, duration);
+  let end = clamp(desiredEnd, 0, duration);
+  if (end <= start) end = Math.min(duration, start + minDurationSec);
+
+  // Snap to the nearest transcript boundaries so clips don't cut mid-sentence.
+  const before = segments.filter((s) => s.start <= start + 0.25);
+  if (before.length) start = before[before.length - 1].start;
+
+  const after = segments.filter((s) => s.end >= end - 0.25);
+  if (after.length) end = after[0].end;
+
+  if (end - start < minDurationSec) {
+    end = Math.min(duration, start + minDurationSec);
+    if (end - start < minDurationSec) start = Math.max(0, end - minDurationSec);
+  }
+
+  if (end - start > maxDurationSec) {
+    end = Math.min(duration, start + maxDurationSec);
+  }
+
+  return { start: Math.max(0, start), end: Math.min(duration, end) };
+}
+
+/** True if two windows overlap within a minimum gap (guarantees distinct clips). */
+function windowsOverlap(
+  a: { start: number; end: number },
+  b: { start: number; end: number },
+  gap: number,
+): boolean {
+  return !(b.start >= a.end + gap || a.start >= b.end + gap);
+}
+
+/**
+ * Main entry: pick the best clip moments using an LLM over the transcript,
+ * guaranteeing the returned clips never share footage (strict non-overlap).
+ * Fills up to maxClips with the next-best non-overlapping segments so the user
+ * always gets the number of shorts they asked for. Falls back to the keyword
+ * heuristic if the LLM call fails.
  */
 export async function analyzeTranscriptForClips(
   videoPath: string,
@@ -302,56 +430,83 @@ export async function analyzeTranscriptForClips(
   const maxClips = opts.maxClips ?? 5;
   const minDurationSec = opts.minDurationSec ?? 20;
   const maxDurationSec = opts.maxDurationSec ?? 30;
-  const targetDurationSec = opts.targetDurationSec ?? 25; // 👈 B: your choice
+  const targetDurationSec = opts.targetDurationSec ?? 25;
 
   const { segments, duration } = await transcribeVideoWithSegments(videoPath);
 
   if (!segments.length || duration <= 0) {
-    console.warn(
-      "[analyzeTranscriptForClips] No segments or invalid duration.",
-    );
+    console.warn("[analyzeTranscriptForClips] No segments or invalid duration.");
     return [];
   }
 
-  // Score each segment
-  const scored = segments.map((seg, idx) => ({
-    seg,
-    score: scoreSegment(seg, idx),
-  }));
+  const MIN_GAP = 1.0;
+  const accepted: ClipCandidate[] = [];
 
-  // Sort by score descending
-  scored.sort((a, b) => b.score - a.score);
+  const tryAccept = (
+    desiredStart: number,
+    desiredEnd: number,
+    score: number,
+    reason: string,
+  ): boolean => {
+    if (accepted.length >= maxClips) return false;
 
-  const candidates: ClipCandidate[] = [];
-
-  for (const { seg, score } of scored) {
-    if (candidates.length >= maxClips) break;
-
-    const window = buildWindowAroundSegment(
-      seg,
+    const w = normalizeWindow(
+      desiredStart,
+      desiredEnd,
       segments,
       duration,
       minDurationSec,
       maxDurationSec,
+    );
+
+    if (w.end - w.start < Math.min(minDurationSec, 5)) return false;
+    if (accepted.some((c) => windowsOverlap(c, w, MIN_GAP))) return false;
+
+    accepted.push({ start: w.start, end: w.end, score, reason });
+    return true;
+  };
+
+  // 1) LLM-selected moments (best first).
+  let llmMoments: LlmMoment[] = [];
+  try {
+    llmMoments = await selectMomentsWithLLM(segments, duration, {
+      maxClips,
+      minDurationSec,
+      maxDurationSec,
       targetDurationSec,
-    );
-
-    // De-duplicate: skip if overlaps too much with an existing candidate
-    const overlaps = candidates.some((c) =>
-      intersectionOverUnion(c, window) > 0.4
-    );
-    if (overlaps) continue;
-
-    candidates.push({
-      start: window.start,
-      end: window.end,
-      score,
-      reason: `Center segment: "${seg.text.slice(0, 80)}..."`,
     });
+  } catch (err) {
+    console.error("[analyzeTranscriptForClips] LLM selection failed, using heuristic:", err);
   }
 
-  // console.log("[analyzeTranscriptForClips] candidates:", candidates);
-  return candidates;
+  for (let i = 0; i < llmMoments.length; i += 1) {
+    if (accepted.length >= maxClips) break;
+    const m = llmMoments[i];
+    tryAccept(m.start, m.end, 1000 - i, m.title ? `LLM: ${m.title}` : (m.reason ?? "LLM moment"));
+  }
+
+  // 2) Fill remaining slots with the best non-overlapping heuristic segments,
+  //    so the user always gets exactly maxClips when the video is long enough.
+  if (accepted.length < maxClips) {
+    const scored = segments
+      .map((seg, idx) => ({ seg, score: scoreSegment(seg, idx) }))
+      .sort((a, b) => b.score - a.score);
+
+    for (const { seg, score } of scored) {
+      if (accepted.length >= maxClips) break;
+      const center = (seg.start + seg.end) / 2;
+      tryAccept(
+        center - targetDurationSec / 2,
+        center + targetDurationSec / 2,
+        score,
+        `Fallback: "${seg.text.slice(0, 60)}..."`,
+      );
+    }
+  }
+
+  // Chronological order = a natural sequence of shorts.
+  accepted.sort((a, b) => a.start - b.start);
+  return accepted;
 }
 
 export type SummaryOptions = {

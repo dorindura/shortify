@@ -264,10 +264,12 @@ export async function processJob(jobId: string) {
             usedAICandidates = true;
             await dbUpdateJobStage(jobId, "scoring", 35);
 
-            const PAD = 2.0;
+            // No padding: analyzeTranscriptForClips already snaps to clean
+            // boundaries and guarantees the clips never overlap. Padding here
+            // would re-introduce shared footage between shorts.
             const ranges = candidates.map((c) => ({
-              start: Math.max(0, c.start - PAD),
-              end: c.end + PAD,
+              start: c.start,
+              end: c.end,
             }));
 
             clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
