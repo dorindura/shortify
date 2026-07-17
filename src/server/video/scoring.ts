@@ -28,6 +28,7 @@ export type ClipCandidate = {
   end: number;
   score: number;
   reason: string;
+  title?: string;
 };
 
 type AnalyzeOptions = {
@@ -326,13 +327,15 @@ Each selected moment MUST:
 - be genuinely compelling: a strong opinion, insight, story, surprising fact, emotional beat, or punchy exchange,
 - NOT overlap in time with any other selected moment.
 
+IMPORTANT about length: the target length is only a guide. Let each clip end exactly where the idea completes. It is better to be shorter or longer (within the allowed range) than to cut off a meaningful thought or pad the clip with filler, intros, tangents, or sponsor breaks.
+
 Order the moments best-first.`,
       },
       {
         role: "user",
         content: `Video length: ${Math.round(duration)} seconds.
 Pick exactly ${opts.maxClips} non-overlapping moments.
-Each must be between ${opts.minDurationSec} and ${opts.maxDurationSec} seconds long (aim for ~${opts.targetDurationSec}s).
+Aim for ~${opts.targetDurationSec}s each, but adapt to the natural length of the thought: anywhere between ${opts.minDurationSec} and ${opts.maxDurationSec} seconds is fine. Never cut a meaningful part just to hit the target, and never include unnecessary parts just to reach it.
 Use the timestamps (in seconds) from the transcript to set start and end.
 
 Transcript:
@@ -447,6 +450,7 @@ export async function analyzeTranscriptForClips(
     desiredEnd: number,
     score: number,
     reason: string,
+    title?: string,
   ): boolean => {
     if (accepted.length >= maxClips) return false;
 
@@ -462,7 +466,7 @@ export async function analyzeTranscriptForClips(
     if (w.end - w.start < Math.min(minDurationSec, 5)) return false;
     if (accepted.some((c) => windowsOverlap(c, w, MIN_GAP))) return false;
 
-    accepted.push({ start: w.start, end: w.end, score, reason });
+    accepted.push({ start: w.start, end: w.end, score, reason, title });
     return true;
   };
 
@@ -482,7 +486,7 @@ export async function analyzeTranscriptForClips(
   for (let i = 0; i < llmMoments.length; i += 1) {
     if (accepted.length >= maxClips) break;
     const m = llmMoments[i];
-    tryAccept(m.start, m.end, 1000 - i, m.title ? `LLM: ${m.title}` : (m.reason ?? "LLM moment"));
+    tryAccept(m.start, m.end, 1000 - i, m.reason ?? "LLM moment", m.title);
   }
 
   // 2) Fill remaining slots with the best non-overlapping heuristic segments,

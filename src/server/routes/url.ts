@@ -21,6 +21,7 @@ type UrlJobBody = {
   maxClips?: unknown;
   captionsEnabled?: unknown;
   captionStyle?: unknown;
+  generateTitles?: unknown;
 };
 
 export async function registerUrlRoute(app: FastifyInstance) {
@@ -139,6 +140,7 @@ export async function registerUrlRoute(app: FastifyInstance) {
         selectionMode,
         outputMode: jobGoal === "shorts" ? outputMode : "shorts",
         customRanges,
+        generateTitles: body.generateTitles === true,
       },
     };
 

@@ -4,6 +4,8 @@ type Props = {
   setClipDurationSec: (value: number) => void;
   maxClips: number;
   setMaxClips: (value: number) => void;
+  generateTitles: boolean;
+  setGenerateTitles: (value: boolean | ((prev: boolean) => boolean)) => void;
 };
 
 export default function ClipSettingsSection({
@@ -12,6 +14,8 @@ export default function ClipSettingsSection({
   setClipDurationSec,
   maxClips,
   setMaxClips,
+  generateTitles,
+  setGenerateTitles,
 }: Props) {
   if (jobGoal === "quote_reel") return null;
 
@@ -65,6 +69,31 @@ export default function ClipSettingsSection({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-3 md:col-span-2">
+        <div>
+          <div className="text-xs font-semibold text-slate-200">AI post title per short</div>
+          <div className="mt-0.5 text-[10px] text-slate-500">
+            Generate a short catchy title for each clip (shown with the result, for your caption).
+            Optional.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setGenerateTitles((prev) => !prev)}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition ${
+            generateTitles
+              ? "border-emerald-400 bg-emerald-500/20"
+              : "border-slate-600 bg-slate-800/80"
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 rounded-full bg-slate-100 shadow transition ${
+              generateTitles ? "translate-x-4" : "translate-x-0.5"
+            }`}
+          />
+        </button>
       </div>
     </div>
   );

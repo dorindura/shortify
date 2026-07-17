@@ -63,6 +63,8 @@ type Props = {
   setClipDurationSec: (value: number) => void;
   maxClips: number;
   setMaxClips: (value: number) => void;
+  generateTitles: boolean;
+  setGenerateTitles: (value: boolean | ((prev: boolean) => boolean)) => void;
   quotePrompt: string;
   setQuotePrompt: (value: string) => void;
   quoteTone: LocalQuoteTone;
@@ -143,6 +145,8 @@ export default function CreateJobPanel(props: Props) {
     setClipDurationSec,
     maxClips,
     setMaxClips,
+    generateTitles,
+    setGenerateTitles,
     quotePrompt,
     setQuotePrompt,
     quoteTone,
@@ -382,6 +386,8 @@ export default function CreateJobPanel(props: Props) {
             setClipDurationSec={setClipDurationSec}
             maxClips={maxClips}
             setMaxClips={setMaxClips}
+            generateTitles={generateTitles}
+            setGenerateTitles={setGenerateTitles}
           />
         )}
 

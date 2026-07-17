@@ -62,6 +62,10 @@ export type ShortsConfig = {
   selectionMode: ShortsSelectionMode;
   outputMode?: ShortsOutputMode;
   customRanges?: (ShortsCustomRange | ShortsCustomClip)[];
+  // Optional AI post title per short (off by default). Aligned by index with
+  // captionedClips once the job finishes.
+  generateTitles?: boolean;
+  clipTitles?: string[];
 };
 
 export type CaptionDraftWord = {

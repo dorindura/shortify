@@ -181,6 +181,7 @@ export async function registerUploadRoute(app: FastifyInstance) {
         selectionMode,
         outputMode: jobGoal === "shorts" ? outputMode : "shorts",
         customRanges,
+        generateTitles: String(fields?.generateTitles?.value ?? "") === "true",
       },
     };
 

@@ -66,6 +66,7 @@ export default function HomePageClient() {
   const [aspect, setAspect] = useState<LocalJobAspect>("vertical");
   const [clipDurationSec, setClipDurationSec] = useState<number>(30);
   const [maxClips, setMaxClips] = useState<number>(3);
+  const [generateTitles, setGenerateTitles] = useState<boolean>(false);
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);
   const [captionStyle, setCaptionStyle] = useState<LocalCaptionStyle>("karaoke");
 
@@ -451,6 +452,7 @@ export default function HomePageClient() {
           summaryTargetSec: jobGoal === "summary" ? summaryTargetSec : undefined,
           selectionMode,
           customRanges: selectionMode === "custom" ? buildCustomRangesPayload(customRanges) : [],
+          generateTitles,
         }),
       });
 
@@ -487,6 +489,7 @@ export default function HomePageClient() {
     formData.append("jobGoal", jobGoal);
     formData.append("outputMode", showLocalOutputModes ? shortsOutputMode : "shorts");
     formData.append("selectionMode", selectionMode);
+    formData.append("generateTitles", String(generateTitles));
 
     if (selectionMode === "custom") {
       formData.append("customRanges", JSON.stringify(buildCustomRangesPayload(customRanges)));
@@ -786,6 +789,8 @@ export default function HomePageClient() {
             setClipDurationSec={setClipDurationSec}
             maxClips={maxClips}
             setMaxClips={setMaxClips}
+            generateTitles={generateTitles}
+            setGenerateTitles={setGenerateTitles}
             quotePrompt={quotePrompt}
             setQuotePrompt={setQuotePrompt}
             quoteTone={quoteTone}

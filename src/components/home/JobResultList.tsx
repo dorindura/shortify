@@ -34,6 +34,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
           const localPath = isLocalResult ? url.slice("local:".length) : "";
           const thumb = job.captionedThumbs?.[idx];
           const canRenderThumb = !!thumb && !thumb.startsWith("local:");
+          const aiClipTitle = job.shortsConfig?.clipTitles?.[idx]?.trim();
           const title =
             job.jobGoal === "quote_reel"
               ? "Quote Reel"
@@ -41,7 +42,7 @@ export default function JobResultList({ job, isDownloading, downloadingKey, onDo
                 ? "Final Video"
                 : isLocalResult
                   ? "Full video"
-                  : `Short ${idx + 1}`;
+                  : aiClipTitle || `Short ${idx + 1}`;
 
           const filename =
             job.jobGoal === "quote_reel"

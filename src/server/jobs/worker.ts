@@ -8,6 +8,7 @@ import {
   dbSetJobReviewReady,
   dbSetJobSmartCrops,
   dbSetJobTextOverlays,
+  dbUpdateJob,
   dbUpdateJobStage,
   dbUpdateJobStatus,
 } from "@/server/jobs/jobsDb";
@@ -173,6 +174,7 @@ export async function processJob(jobId: string) {
 
     let clips: string[] = [];
     let usedAICandidates = false;
+    let aiClipTitles: string[] = [];
 
     const extraCleanupPaths: string[] = [];
 
@@ -253,10 +255,13 @@ export async function processJob(jobId: string) {
 
           usedAICandidates = true;
         } else {
+          // Soft target: let each clip match the natural length of the moment
+          // (±~50% around the chosen duration, hard-capped at 3 minutes) so we
+          // don't cut meaningful parts or pad with filler.
           const candidates: ClipCandidate[] = await analyzeTranscriptForClips(videoInput, {
             maxClips: desiredMaxClips,
-            minDurationSec: Math.max(10, desiredClipDuration - 5),
-            maxDurationSec: desiredClipDuration + 10,
+            minDurationSec: Math.max(8, Math.round(desiredClipDuration * 0.5)),
+            maxDurationSec: Math.min(180, Math.round(desiredClipDuration * 1.5)),
             targetDurationSec: desiredClipDuration,
           });
 
@@ -271,6 +276,8 @@ export async function processJob(jobId: string) {
               start: c.start,
               end: c.end,
             }));
+
+            aiClipTitles = candidates.map((c) => (c.title ?? "").trim());
 
             clips = await createClipsFromVideoUsingRanges(videoInput, ranges);
           }
@@ -414,6 +421,13 @@ export async function processJob(jobId: string) {
     }
 
     await dbSetJobCaptionedResults(jobId, videoUrls, thumbUrls);
+
+    // Persist optional AI titles (aligned by index with the rendered shorts).
+    if (shortsConfig?.generateTitles && aiClipTitles.some((t) => t)) {
+      await dbUpdateJob(jobId, {
+        shorts_config: { ...shortsConfig, clipTitles: aiClipTitles.slice(0, videoUrls.length) },
+      });
+    }
 
     await cleanupLocalJobArtifacts({
       downloadedVideoPath: downloadedVideoPath ?? undefined,
