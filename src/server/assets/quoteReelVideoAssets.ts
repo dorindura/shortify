@@ -125,16 +125,24 @@ function getTopLevelFamily(categoryPath: string): string {
   return normalizeWhitespace(categoryPath).split("/")[0] || "";
 }
 
-function isDarkPremiumCategory(categoryPath: string): boolean {
-  return /(^|\/)(shadows|silhouettes|city_night|staring|thinking|alone|window|rain|broken_glass|anxiety|sadness|toxic|faceless)(\/|$)/.test(
-    categoryPath,
-  );
+// People / interaction families we want to dominate the reel.
+const PEOPLE_FAMILIES = new Set(["characters", "social_situations", "actions"]);
+// Faces & energy: real people too, kept present for variety but not the majority.
+const MILD_PEOPLE_FAMILIES = new Set(["emotions", "energy"]);
+// Ambient / mood families (rain, roads, windows, sunsets, rooms...) that
+// otherwise flood the output. Allowed only as a capped accent.
+const AMBIENT_FAMILIES = new Set(["symbolic", "scenes_by_context"]);
+
+function isPeopleFamily(family: string): boolean {
+  return PEOPLE_FAMILIES.has(family);
 }
 
-function isBrightOrComedicCategory(categoryPath: string): boolean {
-  return /(^|\/)(friendship|kindness|love|peace|sunrise|sky|calm|awkward_moments)(\/|$)/.test(
-    categoryPath,
-  );
+function isMildPeopleFamily(family: string): boolean {
+  return MILD_PEOPLE_FAMILIES.has(family);
+}
+
+function isAmbientFamily(family: string): boolean {
+  return AMBIENT_FAMILIES.has(family);
 }
 
 function preferredFamiliesForTone(tone?: QuoteReelTone): string[] {
@@ -339,9 +347,9 @@ const FIRST_SEGMENT_IMPACT_CATEGORIES = [
 const DEFAULT_CATEGORY_FALLBACKS = [
   "characters/thinking",
   "characters/walking",
-  "scenes_by_context/street",
-  "symbolic/window",
-  "symbolic/sky",
+  "characters/duo",
+  "social_situations/friendship",
+  "characters/group",
   "actions/observing",
 ];
 
@@ -417,9 +425,23 @@ function scoreAssetForSegment(
     score -= 28;
   }
 
-  if (context.tone === "dark" || context.tone === "stoic" || context.tone === "cinematic") {
-    if (isDarkPremiumCategory(asset.categoryPath)) score += 26;
-    if (isBrightOrComedicCategory(asset.categoryPath) && segment.type !== "payoff") score -= 18;
+  // People-first: strongly favor scenes with real people and interaction, and
+  // discourage ambient/mood scenes that otherwise dominate the library. Ambient
+  // stays available as a capped accent (see pickAssetsForQuoteReelSegments).
+  if (isPeopleFamily(family)) {
+    score += 46;
+    if (family === "social_situations") score += 12; // interaction is rare + valuable
+  } else if (isMildPeopleFamily(family)) {
+    score += 28; // faces / energy add variety, just not the majority
+  } else if (isAmbientFamily(family)) {
+    score -= 28;
+    // ...but a symbolic scene can be a tasteful accent on the closing beats.
+    if (
+      asset.categoryPath.startsWith("symbolic/") &&
+      (segment.type === "payoff" || segment.type === "cta")
+    ) {
+      score += 26;
+    }
   }
 
   for (const tag of segment.visualTags ?? []) {
@@ -482,17 +504,26 @@ function chooseBestAsset(
     usedCategoryCounts: Map<string, number>;
     tone?: QuoteReelTone;
     segmentIndex: number;
+    ambientAllowed: boolean;
   },
 ): QuoteReelVideoAsset {
   if (!assets.length) {
     throw new Error("No quote reel video assets available");
   }
 
+  // Once the per-reel ambient budget is spent, drop ambient assets entirely so
+  // the remaining segments are guaranteed to be people/interaction scenes.
+  const pool =
+    context.ambientAllowed === false
+      ? assets.filter((asset) => !isAmbientFamily(getTopLevelFamily(asset.categoryPath)))
+      : assets;
+  const effectiveAssets = pool.length ? pool : assets;
+
   const allCategoryPaths = Array.from(
-    new Set(assets.map((item) => item.categoryPath).filter(Boolean)),
+    new Set(effectiveAssets.map((item) => item.categoryPath).filter(Boolean)),
   );
 
-  const scored = shuffle(assets)
+  const scored = shuffle(effectiveAssets)
     .map((asset) => ({
       asset,
       score: scoreAssetForSegment(asset, segment, {
@@ -529,6 +560,11 @@ export async function pickAssetsForQuoteReelSegments(
   let previousAssetPath: string | null = null;
   let previousCategoryPath: string | null = null;
 
+  // People-first budget: cap ambient/mood scenes at ~20% of the reel so it's
+  // seasoning, not the meal. Always allow at least one for a tasteful accent.
+  const maxAmbient = Math.max(1, Math.round(segments.length * 0.2));
+  let ambientUsed = 0;
+
   for (const [segmentIndex, segment] of segments.entries()) {
     let selected: QuoteReelVideoAsset;
 
@@ -545,7 +581,12 @@ export async function pickAssetsForQuoteReelSegments(
         usedCategoryCounts,
         tone,
         segmentIndex,
+        ambientAllowed: ambientUsed < maxAmbient,
       });
+    }
+
+    if (isAmbientFamily(getTopLevelFamily(selected.categoryPath))) {
+      ambientUsed += 1;
     }
 
     usedAssetCounts.set(selected.assetPath, (usedAssetCounts.get(selected.assetPath) ?? 0) + 1);
