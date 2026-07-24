@@ -327,7 +327,11 @@ Each selected moment MUST:
 - be genuinely compelling: a strong opinion, insight, story, surprising fact, emotional beat, or punchy exchange,
 - NOT overlap in time with any other selected moment.
 
-IMPORTANT about length: the target length is only a guide. Let each clip end exactly where the idea completes. It is better to be shorter or longer (within the allowed range) than to cut off a meaningful thought or pad the clip with filler, intros, tangents, or sponsor breaks.
+CRITICAL about boundaries and length:
+- The idea's completeness ALWAYS wins over hitting a target length.
+- "start" MUST equal the start timestamp of the FIRST transcript line of the idea. "end" MUST equal the end timestamp of the LAST transcript line of the idea. Copy those exact timestamps from the transcript — do not invent values and do not cut inside a line.
+- End the clip the moment the thought resolves. Do NOT run into the next, unrelated idea just to make the clip longer, and do NOT stop early and leave the thought unfinished just to be closer to the target.
+- The target length is only a rough hint; the real length is whatever the complete idea takes.
 
 Order the moments best-first.`,
       },
@@ -335,8 +339,8 @@ Order the moments best-first.`,
         role: "user",
         content: `Video length: ${Math.round(duration)} seconds.
 Pick exactly ${opts.maxClips} non-overlapping moments.
-Aim for ~${opts.targetDurationSec}s each, but adapt to the natural length of the thought: anywhere between ${opts.minDurationSec} and ${opts.maxDurationSec} seconds is fine. Never cut a meaningful part just to hit the target, and never include unnecessary parts just to reach it.
-Use the timestamps (in seconds) from the transcript to set start and end.
+Rough length hint: ~${opts.targetDurationSec}s each (anywhere from ~${opts.minDurationSec}s to ~${opts.maxDurationSec}s is fine) — but a complete idea always wins over the hint.
+Set "start" and "end" to timestamps that appear verbatim in the transcript lines (first line's start, last line's end), so the cut lands exactly on the idea's edges.
 
 Transcript:
 ${transcript}
@@ -378,18 +382,21 @@ Return strict JSON: {"moments":[{"start":number,"end":number,"title":string,"rea
   return moments;
 }
 
-/** Snap a desired [start,end] to segment boundaries and enforce min/max duration. */
+/**
+ * Snap a desired [start,end] to transcript sentence boundaries so the clip ends
+ * exactly where the idea ends. The clip is NEVER extended (that would pull in the
+ * next, unrelated idea) — a short complete idea stays short. Only a hard ceiling
+ * pulls an over-long pick back, always landing on a sentence boundary.
+ */
 function normalizeWindow(
   desiredStart: number,
   desiredEnd: number,
   segments: WhisperSegment[],
   duration: number,
-  minDurationSec: number,
-  maxDurationSec: number,
+  hardCeilingSec: number,
 ): { start: number; end: number } {
   let start = clamp(desiredStart, 0, duration);
   let end = clamp(desiredEnd, 0, duration);
-  if (end <= start) end = Math.min(duration, start + minDurationSec);
 
   // Snap to the nearest transcript boundaries so clips don't cut mid-sentence.
   const before = segments.filter((s) => s.start <= start + 0.25);
@@ -398,13 +405,17 @@ function normalizeWindow(
   const after = segments.filter((s) => s.end >= end - 0.25);
   if (after.length) end = after[0].end;
 
-  if (end - start < minDurationSec) {
-    end = Math.min(duration, start + minDurationSec);
-    if (end - start < minDurationSec) start = Math.max(0, end - minDurationSec);
+  // Degenerate pick: fall back to the single sentence at the start.
+  if (end <= start) {
+    const seg = segments.find((s) => s.end > start);
+    end = seg ? seg.end : Math.min(duration, start + 8);
   }
 
-  if (end - start > maxDurationSec) {
-    end = Math.min(duration, start + maxDurationSec);
+  // Above the hard ceiling: pull back to the last full sentence within the cap.
+  if (end - start > hardCeilingSec) {
+    const limit = start + hardCeilingSec;
+    const within = segments.filter((s) => s.end <= limit && s.end > start);
+    end = within.length ? within[within.length - 1].end : Math.min(duration, limit);
   }
 
   return { start: Math.max(0, start), end: Math.min(duration, end) };
@@ -443,6 +454,12 @@ export async function analyzeTranscriptForClips(
   }
 
   const MIN_GAP = 1.0;
+  // Length is idea-driven: the clip ends where the thought ends. A hard ceiling
+  // (3 min) protects platform limits; anything below MIN_CLIP_SEC is dropped
+  // rather than padded (never extend into unrelated footage). The chosen target
+  // is only a hint to the LLM, never a forced cut.
+  const HARD_CEILING_SEC = 180;
+  const MIN_CLIP_SEC = 7;
   const accepted: ClipCandidate[] = [];
 
   const tryAccept = (
@@ -454,16 +471,9 @@ export async function analyzeTranscriptForClips(
   ): boolean => {
     if (accepted.length >= maxClips) return false;
 
-    const w = normalizeWindow(
-      desiredStart,
-      desiredEnd,
-      segments,
-      duration,
-      minDurationSec,
-      maxDurationSec,
-    );
+    const w = normalizeWindow(desiredStart, desiredEnd, segments, duration, HARD_CEILING_SEC);
 
-    if (w.end - w.start < Math.min(minDurationSec, 5)) return false;
+    if (w.end - w.start < MIN_CLIP_SEC) return false;
     if (accepted.some((c) => windowsOverlap(c, w, MIN_GAP))) return false;
 
     accepted.push({ start: w.start, end: w.end, score, reason, title });

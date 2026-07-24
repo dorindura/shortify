@@ -255,13 +255,14 @@ export async function processJob(jobId: string) {
 
           usedAICandidates = true;
         } else {
-          // Soft target: let each clip match the natural length of the moment
-          // (±~50% around the chosen duration, hard-capped at 3 minutes) so we
-          // don't cut meaningful parts or pad with filler.
+          // Idea-driven length: the chosen duration is only a hint to the LLM.
+          // The selector snaps clips to the natural end of the idea (hard floor
+          // 10s / hard ceiling 3min), so nothing meaningful is cut and no filler
+          // is padded in — the clip runs exactly as long as the thought does.
           const candidates: ClipCandidate[] = await analyzeTranscriptForClips(videoInput, {
             maxClips: desiredMaxClips,
-            minDurationSec: Math.max(8, Math.round(desiredClipDuration * 0.5)),
-            maxDurationSec: Math.min(180, Math.round(desiredClipDuration * 1.5)),
+            minDurationSec: Math.max(15, Math.round(desiredClipDuration * 0.5)),
+            maxDurationSec: Math.min(150, Math.round(desiredClipDuration * 2)),
             targetDurationSec: desiredClipDuration,
           });
 
