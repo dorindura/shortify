@@ -11,6 +11,9 @@ type Props = {
   onDeleteJob: (jobId: string) => Promise<void>;
   onDownload: (fileUrl: string, filename: string, key: string) => Promise<void>;
   openReview: (job: Job) => void;
+  youtubeConnected: boolean;
+  isPublishing: boolean;
+  onPublishYoutube: (jobId: string) => Promise<void>;
 };
 
 export default function JobCard({
@@ -22,6 +25,9 @@ export default function JobCard({
   onDeleteJob,
   onDownload,
   openReview,
+  youtubeConnected,
+  isPublishing,
+  onPublishYoutube,
 }: Props) {
   const isPending = job.status === "pending";
   const isProcessing = job.status === "processing";
@@ -215,6 +221,18 @@ export default function JobCard({
             ) : null}
           </div>
 
+          {job.quoteReelMeta?.angle && (
+            <div className="mt-2 rounded-lg border border-emerald-500/20 bg-slate-950/60 p-2">
+              <div className="text-[10px] font-semibold text-emerald-200">
+                Angle: {job.quoteReelMeta.angle.angleFormat} · {job.quoteReelMeta.angle.theme} ·{" "}
+                {job.quoteReelMeta.angle.register}
+              </div>
+              <div className="mt-1 text-[10px] text-slate-400">
+                {job.quoteReelMeta.angle.premise}
+              </div>
+            </div>
+          )}
+
           {job.quoteReelMeta?.hashtags?.length ? (
             <div className="mt-2 text-[10px] text-slate-500">
               {job.quoteReelMeta.hashtags.join(" ")}
@@ -270,6 +288,92 @@ export default function JobCard({
           <div className="mt-1 text-[10px] whitespace-pre-wrap text-slate-400">
             {job.quoteReelMeta.instagramCaption}
           </div>
+        </div>
+      )}
+
+      {job.quoteReelMeta?.youtube?.title && (
+        <div className="mt-3 rounded-lg border border-rose-500/20 bg-slate-950/60 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold text-rose-200">YouTube metadata</div>
+            <button
+              type="button"
+              onClick={() => {
+                const yt = job.quoteReelMeta?.youtube;
+                if (!yt) return;
+                const block = [
+                  `TITLE: ${yt.title}`,
+                  yt.titleVariants?.length ? `ALT: ${yt.titleVariants.join(" | ")}` : "",
+                  "",
+                  yt.description,
+                  "",
+                  yt.tags?.length ? `TAGS: ${yt.tags.join(", ")}` : "",
+                  yt.hashtags?.length ? `HASHTAGS: ${yt.hashtags.join(" ")}` : "",
+                  yt.pinnedComment ? `PINNED: ${yt.pinnedComment}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+                navigator.clipboard.writeText(block);
+              }}
+              className="rounded-full border border-slate-700 px-2 py-0.5 text-[9px] text-slate-300 hover:bg-slate-900"
+            >
+              Copy all
+            </button>
+          </div>
+
+          <div className="mt-1 text-[11px] font-semibold text-slate-100">
+            {job.quoteReelMeta.youtube.title}
+          </div>
+
+          {job.quoteReelMeta.youtube.titleVariants?.length ? (
+            <div className="mt-1 text-[10px] text-slate-500">
+              Alt: {job.quoteReelMeta.youtube.titleVariants.join("  •  ")}
+            </div>
+          ) : null}
+
+          {job.quoteReelMeta.youtube.description && (
+            <div className="mt-2 text-[10px] whitespace-pre-wrap text-slate-400">
+              {job.quoteReelMeta.youtube.description}
+            </div>
+          )}
+
+          {job.quoteReelMeta.youtube.tags?.length ? (
+            <div className="mt-2 text-[10px] text-slate-500">
+              {job.quoteReelMeta.youtube.tags.join(", ")}
+            </div>
+          ) : null}
+
+          {job.quoteReelMeta.youtube.hashtags?.length ? (
+            <div className="mt-1 text-[10px] font-medium text-rose-300/80">
+              {job.quoteReelMeta.youtube.hashtags.join(" ")}
+            </div>
+          ) : null}
+
+          {job.quoteReelMeta.youtube.pinnedComment && (
+            <div className="mt-2 text-[10px] text-slate-400 italic">
+              📌 {job.quoteReelMeta.youtube.pinnedComment}
+            </div>
+          )}
+
+          {job.quoteReelMeta.youtube.publishedUrl ? (
+            <a
+              href={job.quoteReelMeta.youtube.publishedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+            >
+              ✓ Published ({job.quoteReelMeta.youtube.privacyStatus ?? "private"}) — open on YouTube
+            </a>
+          ) : isDone ? (
+            <button
+              type="button"
+              onClick={() => onPublishYoutube(job.id)}
+              disabled={!youtubeConnected || isPublishing}
+              title={youtubeConnected ? "Upload to your connected channel" : "Connect YouTube first"}
+              className="mt-2 inline-flex items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-[10px] font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPublishing ? "Publishing..." : "Publish to YouTube (private)"}
+            </button>
+          ) : null}
         </div>
       )}
 

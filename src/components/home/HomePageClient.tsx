@@ -12,6 +12,7 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteAngle,
   LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
@@ -88,6 +89,14 @@ export default function HomePageClient() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voicePreset, setVoicePreset] = useState<LocalQuoteVoicePreset>("storyteller");
   const [posterEnabled, setPosterEnabled] = useState(false);
+  const [autoAngle, setAutoAngle] = useState(false);
+  const [batchCount, setBatchCount] = useState(4);
+  const [angleCandidates, setAngleCandidates] = useState<LocalQuoteAngle[]>([]);
+  const [selectedAngleIdx, setSelectedAngleIdx] = useState<number[]>([]);
+  const [anglesLoading, setAnglesLoading] = useState(false);
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  const [youtubeChannelTitle, setYoutubeChannelTitle] = useState<string | null>(null);
+  const [publishingJobs, setPublishingJobs] = useState<Record<string, boolean>>({});
   const [quoteCaptionPreset, setQuoteCaptionPreset] = useState<LocalQuoteCaptionPreset>(
     "card_bottom_premium_karaoke",
   );
@@ -326,6 +335,7 @@ export default function HomePageClient() {
               voiceEnabled,
               voicePreset,
               posterEnabled,
+              autoAngle,
               targetDurationSec,
               minDurationSec,
               maxDurationSec,
@@ -341,6 +351,7 @@ export default function HomePageClient() {
               voiceEnabled,
               voicePreset,
               posterEnabled,
+              autoAngle,
               targetDurationSec,
               minDurationSec,
               maxDurationSec,
@@ -372,6 +383,153 @@ export default function HomePageClient() {
       await fetchJobs();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function previewQuoteReelAngles() {
+    if (!quotePrompt.trim()) return;
+
+    setAnglesLoading(true);
+    try {
+      const res = await authedJsonFetch(`${API}/api/quote-reel/angles`, {
+        method: "POST",
+        body: JSON.stringify({ prompt: quotePrompt, count: batchCount, tone: quoteTone }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to generate angles.");
+        setShowUpgrade(res.status === 402);
+        return;
+      }
+
+      const data = (await res.json()) as { angles?: LocalQuoteAngle[] };
+      const angles = data.angles ?? [];
+      setAngleCandidates(angles);
+      setSelectedAngleIdx(angles.map((_unused, index) => index)); // pre-select all
+      setPaywallMessage(null);
+      setShowUpgrade(false);
+    } finally {
+      setAnglesLoading(false);
+    }
+  }
+
+  function toggleAngleSelection(index: number) {
+    setSelectedAngleIdx((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
+    );
+  }
+
+  async function createQuoteReelsFromAngles() {
+    const angles = selectedAngleIdx
+      .map((index) => angleCandidates[index])
+      .filter((angle): angle is LocalQuoteAngle => Boolean(angle));
+
+    if (!angles.length) return;
+
+    setLoading(true);
+    try {
+      const res = await authedJsonFetch(`${API}/api/quote-reel/batch`, {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: quotePrompt,
+          angles,
+          tone: quoteTone,
+          visualSource: quoteVisualSource,
+          captionsEnabled,
+          captionStyle,
+          captionPreset: quoteCaptionPreset,
+          voiceEnabled,
+          voicePreset,
+          posterEnabled,
+          targetDurationSec,
+          minDurationSec,
+          maxDurationSec,
+        }),
+      });
+
+      if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Pro only. Upgrade to continue.");
+        setShowUpgrade(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to create reels.");
+        setShowUpgrade(false);
+        return;
+      }
+
+      setPaywallMessage(null);
+      setShowUpgrade(false);
+      setAngleCandidates([]);
+      setSelectedAngleIdx([]);
+      setQuotePrompt("");
+      await fetchJobs();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchYoutubeStatus() {
+    try {
+      const res = await authedJsonFetch(`${API}/api/youtube/status`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { connected?: boolean; channelTitle?: string | null };
+      setYoutubeConnected(!!data.connected);
+      setYoutubeChannelTitle(data.channelTitle ?? null);
+    } catch {
+      // ignore status errors
+    }
+  }
+
+  async function connectYoutube() {
+    try {
+      const res = await authedJsonFetch(`${API}/api/youtube/auth-url`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Could not start YouTube connection.");
+        setShowUpgrade(false);
+        return;
+      }
+      const data = (await res.json()) as { url?: string };
+      if (data.url) window.location.href = data.url;
+    } catch {
+      setPaywallMessage("Could not start YouTube connection.");
+    }
+  }
+
+  async function disconnectYoutube() {
+    await authedJsonFetch(`${API}/api/youtube/disconnect`, { method: "POST" }).catch(() => {});
+    setYoutubeConnected(false);
+    setYoutubeChannelTitle(null);
+  }
+
+  async function publishToYoutube(jobId: string) {
+    setPublishingJobs((prev) => ({ ...prev, [jobId]: true }));
+    try {
+      const res = await authedJsonFetch(`${API}/api/youtube/publish`, {
+        method: "POST",
+        body: JSON.stringify({ jobId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPaywallMessage(data?.error ?? "Failed to publish to YouTube.");
+        setShowUpgrade(false);
+        return;
+      }
+
+      setPaywallMessage(null);
+      await fetchJobs();
+    } finally {
+      setPublishingJobs((prev) => {
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
     }
   }
 
@@ -631,6 +789,15 @@ export default function HomePageClient() {
 
   useEffect(() => {
     fetchJobs();
+    fetchYoutubeStatus();
+
+    // Clean up the ?youtube=connected|error param after returning from OAuth.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("youtube")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("youtube");
+      window.history.replaceState({}, "", url.toString());
+    }
   }, []);
 
   useEffect(() => {
@@ -825,6 +992,16 @@ export default function HomePageClient() {
             setVoicePreset={setVoicePreset}
             posterEnabled={posterEnabled}
             setPosterEnabled={setPosterEnabled}
+            autoAngle={autoAngle}
+            setAutoAngle={setAutoAngle}
+            batchCount={batchCount}
+            setBatchCount={setBatchCount}
+            anglesLoading={anglesLoading}
+            angleCandidates={angleCandidates}
+            selectedAngleIdx={selectedAngleIdx}
+            onPreviewAngles={previewQuoteReelAngles}
+            onToggleAngle={toggleAngleSelection}
+            onCreateFromAngles={createQuoteReelsFromAngles}
             targetDurationSec={targetDurationSec}
             setTargetDurationSec={setTargetDurationSec}
             minDurationSec={minDurationSec}
@@ -844,6 +1021,12 @@ export default function HomePageClient() {
           onDeleteJob={deleteJob}
           onDownload={downloadWithAuth}
           openReview={openReview}
+          youtubeConnected={youtubeConnected}
+          youtubeChannelTitle={youtubeChannelTitle}
+          onConnectYoutube={connectYoutube}
+          onDisconnectYoutube={disconnectYoutube}
+          publishingJobs={publishingJobs}
+          onPublishYoutube={publishToYoutube}
         />
       </div>
 

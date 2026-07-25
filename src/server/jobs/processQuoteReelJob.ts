@@ -27,6 +27,8 @@ import {
   assembleQuoteReel,
 } from "@/server/video/quoteReelAssembly";
 import { generateQuoteReelPoster } from "@/server/video/quoteReelPoster";
+import { generateYoutubeMetadata } from "@/server/ai/youtubeMetadataGenerator";
+import { buildAnglePrompt, generateQuoteReelAngle } from "@/server/ai/quoteReelAngleGenerator";
 import {
   type CaptionDraftClip,
   generateCaptionDraftsForAudioFiles,
@@ -170,6 +172,9 @@ export async function processQuoteReelJob(jobId: string) {
     const posterEnabled =
       typeof existingMeta.posterEnabled === "boolean" ? existingMeta.posterEnabled : false;
 
+    const autoAngle =
+      typeof existingMeta.autoAngle === "boolean" ? existingMeta.autoAngle : false;
+
     const voicePreset: QuoteReelVoicePreset = isQuoteReelVoicePreset(existingMeta.voicePreset)
       ? existingMeta.voicePreset
       : isQuoteReelVoicePreset(existingMeta.voiceover?.voicePreset)
@@ -215,6 +220,22 @@ export async function processQuoteReelJob(jobId: string) {
     const scriptReviewRequired = existingMeta.scriptReviewRequired !== false;
     const scriptReviewApproved = existingMeta.scriptReviewApproved === true;
 
+    // Variety engine: in AI mode, pick a fresh distinct angle so repeated
+    // generations from the same niche come out varied but on-brand. Reuse the
+    // stored angle on resume; never block the job if angle generation fails.
+    let angle = existingMeta.angle;
+
+    if (autoAngle && mode === "ai_text" && !scriptReviewApproved && !angle && prompt) {
+      try {
+        angle = await generateQuoteReelAngle({ niche: prompt, tone, seed: existingMeta.angleSeed });
+      } catch (angleError) {
+        console.error("[processQuoteReelJob] Angle generation failed:", angleError);
+      }
+    }
+
+    const effectivePrompt =
+      mode === "ai_text" && angle ? buildAnglePrompt(prompt, angle) : prompt;
+
     const scriptPlan =
       scriptReviewApproved && typeof existingMeta.finalScript === "string"
         ? buildQuoteReelPlanFromFinalScript({
@@ -235,7 +256,7 @@ export async function processQuoteReelJob(jobId: string) {
             mode,
             tone,
             text: mode === "manual_text" ? sourceText : undefined,
-            prompt: mode === "ai_text" ? prompt : undefined,
+            prompt: mode === "ai_text" ? effectivePrompt : undefined,
             targetDurationSec,
             minDurationSec,
             maxDurationSec,
@@ -272,6 +293,8 @@ export async function processQuoteReelJob(jobId: string) {
       hashtags: scriptPlan.hashtags,
       musicSuggestions: scriptPlan.musicSuggestions,
       selectedAssets: [],
+      autoAngle,
+      angle,
     });
 
     if (scriptReviewRequired && !scriptReviewApproved) {
@@ -509,6 +532,28 @@ export async function processQuoteReelJob(jobId: string) {
       }
     }
 
+    // YouTube metadata: title/description/tags, aligned to the video's hook so
+    // the title delivers exactly what the opening line promises.
+    let youtubeMeta: QuoteReelMeta["youtube"];
+
+    try {
+      const hookSegment = scriptPlan.segments.find((segment) => segment.type === "hook");
+      const hook =
+        hookSegment?.text?.trim() ||
+        scriptPlan.finalScript.split(/(?<=[.!?])\s+/)[0]?.trim() ||
+        undefined;
+
+      youtubeMeta = await generateYoutubeMetadata({
+        tone,
+        script: scriptPlan.finalScript,
+        hook,
+        topic: mode === "ai_text" ? prompt : undefined,
+      });
+    } catch (metadataError) {
+      // Metadata is pure upside; never fail the reel job over it.
+      console.error("[processQuoteReelJob] YouTube metadata generation failed:", metadataError);
+    }
+
     await dbSetJobCaptionedResults(jobId, [uploadedVideo.publicUrl], [uploadedThumb.publicUrl]);
 
     await dbUpdateJobQuoteMeta(jobId, {
@@ -538,6 +583,9 @@ export async function processQuoteReelJob(jobId: string) {
       posterUrl,
       posterQuote,
       posterImageCategory,
+      youtube: youtubeMeta,
+      autoAngle,
+      angle,
     });
 
     await dbUpdateJobStage(jobId, "finished", 100);

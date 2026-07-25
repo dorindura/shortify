@@ -903,6 +903,7 @@ Viral structure:
 - Open with a hard emotional question, accusation, paradox, or unfinished sentence.
 - The first 2 seconds must create tension before explanation.
 - The first segment must feel like a personal wound or uncomfortable truth, not an intro.
+- Make the hook SPECIFIC, not generic: anchor it in a concrete situation, person, or moment (a text left on read, the friend who says "just relax", 2am thoughts) rather than an abstract slogan. Specific hooks stop the scroll; generic motivation gets skipped.
 - Prefer first-line formats like:
   "Do you ever notice..."
   "Nobody tells you..."
@@ -932,6 +933,7 @@ ${ALLOWED_VISUAL_TAGS.join(", ")}
 Text writing rules:
 - No emojis in the script.
 - No numbered lists.
+- Advertiser-friendly: no profanity, slurs, or explicit sexual/violent content. Keep it intense through truth and tension, not vulgarity (needed for YouTube monetization).
 - Avoid generic fake guru phrases.
 - Make it sound human, direct, viral and emotionally intelligent.
 - Avoid vague lines like "life is hard", "be yourself", "protect your peace" unless they are tied to a concrete action.

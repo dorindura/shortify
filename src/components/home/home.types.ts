@@ -26,6 +26,15 @@ export type LocalQuoteCaptionPreset =
   | "card_center_premium_word"
   | "card_bottom_premium_karaoke";
 
+export type LocalQuoteAngle = {
+  angleFormat: string;
+  theme: string;
+  register: string;
+  premise: string;
+  hook: string;
+  workingTitle?: string;
+};
+
 export type CustomClipRange = {
   id: string;
   startSec: string;

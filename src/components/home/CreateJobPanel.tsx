@@ -3,6 +3,7 @@ import type {
   LocalCaptionStyle,
   LocalJobAspect,
   LocalJobGoal,
+  LocalQuoteAngle,
   LocalQuoteCaptionPreset,
   LocalQuoteReelMode,
   LocalQuoteTone,
@@ -99,6 +100,16 @@ type Props = {
   setVoicePreset: (value: LocalQuoteVoicePreset) => void;
   posterEnabled: boolean;
   setPosterEnabled: (value: boolean | ((prev: boolean) => boolean)) => void;
+  autoAngle: boolean;
+  setAutoAngle: (value: boolean | ((prev: boolean) => boolean)) => void;
+  batchCount: number;
+  setBatchCount: (value: number) => void;
+  anglesLoading: boolean;
+  angleCandidates: LocalQuoteAngle[];
+  selectedAngleIdx: number[];
+  onPreviewAngles: () => Promise<void>;
+  onToggleAngle: (index: number) => void;
+  onCreateFromAngles: () => Promise<void>;
   targetDurationSec: number;
   setTargetDurationSec: (value: number) => void;
   minDurationSec: number;
@@ -181,6 +192,16 @@ export default function CreateJobPanel(props: Props) {
     setVoicePreset,
     posterEnabled,
     setPosterEnabled,
+    autoAngle,
+    setAutoAngle,
+    batchCount,
+    setBatchCount,
+    anglesLoading,
+    angleCandidates,
+    selectedAngleIdx,
+    onPreviewAngles,
+    onToggleAngle,
+    onCreateFromAngles,
     targetDurationSec,
     setTargetDurationSec,
     minDurationSec,
@@ -410,6 +431,16 @@ export default function CreateJobPanel(props: Props) {
             setVoicePreset={setVoicePreset}
             posterEnabled={posterEnabled}
             setPosterEnabled={setPosterEnabled}
+            autoAngle={autoAngle}
+            setAutoAngle={setAutoAngle}
+            batchCount={batchCount}
+            setBatchCount={setBatchCount}
+            anglesLoading={anglesLoading}
+            angleCandidates={angleCandidates}
+            selectedAngleIdx={selectedAngleIdx}
+            onPreviewAngles={onPreviewAngles}
+            onToggleAngle={onToggleAngle}
+            onCreateFromAngles={onCreateFromAngles}
             targetDurationSec={targetDurationSec}
             setTargetDurationSec={setTargetDurationSec}
             minDurationSec={minDurationSec}

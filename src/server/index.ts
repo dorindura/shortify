@@ -26,6 +26,7 @@ async function main() {
   const { registerMultiSourceEditRoute } = await import("./routes/multiSourceEdit");
   const { registerMultiSourceEditReviewRoute } = await import("./routes/multiSourceEditReview");
   const { registerMultiSourceEditRenderRoute } = await import("./routes/multiSourceEditRender");
+  const { registerYoutubeRoute } = await import("./routes/youtube");
   const { UPLOAD_MAX_FILE_BYTES, formatBytes } = await import("./uploadLimits");
 
   const app = Fastify({
@@ -85,6 +86,7 @@ async function main() {
   await registerMultiSourceEditRoute(app);
   await registerMultiSourceEditReviewRoute(app);
   await registerMultiSourceEditRenderRoute(app);
+  await registerYoutubeRoute(app);
 
   const port = Number(process.env.PORT ?? 8080);
   await app.listen({ port, host: "0.0.0.0" });

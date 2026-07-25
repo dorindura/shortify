@@ -175,6 +175,41 @@ export type QuoteReelMeta = {
   posterQuote?: string;
   posterUrl?: string;
   posterImageCategory?: string;
+
+  // YouTube metadata generated for the reel (title/description/tags/hashtags).
+  youtube?: QuoteReelYoutubeMeta;
+
+  // Variety engine: when on, AI picks a fresh distinct angle each generation.
+  autoAngle?: boolean;
+  angleSeed?: QuoteReelAngleSeed;
+  angle?: QuoteReelAngle;
+};
+
+export type QuoteReelAngleSeed = {
+  angleFormat: string;
+  theme: string;
+  register: string;
+};
+
+export type QuoteReelAngle = QuoteReelAngleSeed & {
+  premise: string;
+  hook: string;
+  workingTitle?: string;
+};
+
+export type QuoteReelYoutubeMeta = {
+  title: string;
+  titleVariants?: string[];
+  description: string;
+  tags: string[];
+  hashtags: string[];
+  pinnedComment?: string;
+
+  // Set once the reel is published to YouTube.
+  publishedVideoId?: string;
+  publishedUrl?: string;
+  publishedAt?: string;
+  privacyStatus?: "private" | "unlisted" | "public";
 };
 
 export type SmartCropSegment = {

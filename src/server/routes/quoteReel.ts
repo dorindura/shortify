@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import type {
   CaptionStyle,
   Job,
+  QuoteReelAngle,
   QuoteReelCaptionPreset,
   QuoteReelMode,
   QuoteReelTone,
@@ -12,6 +13,10 @@ import type {
   QuoteReelVoicePreset,
 } from "@lib/jobsStore";
 import { createJob } from "@lib/jobsRepo";
+import {
+  generateQuoteReelAngle,
+  pickDistinctAngleSeeds,
+} from "@server/ai/quoteReelAngleGenerator";
 import { enqueueJob } from "@server/jobs/queue";
 import { enforceJobLimits } from "@server/billing/enforceLimits";
 import { requireUser } from "@server/auth/requireUser";
@@ -66,6 +71,30 @@ function getDefaultQuoteReelCaptionPreset(): QuoteReelCaptionPreset {
   return ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(value as QuoteReelCaptionPreset)
     ? (value as QuoteReelCaptionPreset)
     : "card_bottom_premium_karaoke";
+}
+
+// Validate an angle object coming back from the client (previewed then selected).
+function sanitizeAngle(value: unknown): QuoteReelAngle | null {
+  if (!value || typeof value !== "object") return null;
+  const a = value as Record<string, unknown>;
+
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const premise = str(a.premise);
+  const hook = str(a.hook);
+  const angleFormat = str(a.angleFormat);
+  const theme = str(a.theme);
+  const register = str(a.register);
+
+  if (!premise || !hook || !angleFormat || !theme || !register) return null;
+
+  return {
+    angleFormat,
+    theme,
+    register,
+    premise,
+    hook,
+    workingTitle: str(a.workingTitle) || undefined,
+  };
 }
 
 export async function registerQuoteReelRoute(app: FastifyInstance) {
@@ -132,6 +161,8 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
     const voiceEnabled = typeof body.voiceEnabled === "boolean" ? body.voiceEnabled : true;
 
     const posterEnabled = typeof body.posterEnabled === "boolean" ? body.posterEnabled : false;
+
+    const autoAngle = typeof body.autoAngle === "boolean" ? body.autoAngle : false;
 
     const rawVoicePreset = normalizeTextInput(body.voicePreset) as QuoteReelVoicePreset | "";
     const voicePreset: QuoteReelVoicePreset = ALLOWED_VOICE_PRESETS.includes(
@@ -221,6 +252,7 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
         voiceEnabled,
         voicePreset,
         posterEnabled,
+        autoAngle,
         musicSuggestions: [],
         voiceover: {
           enabled: voiceEnabled,
@@ -233,5 +265,222 @@ export async function registerQuoteReelRoute(app: FastifyInstance) {
     await enqueueJob(job);
 
     return reply.code(201).send({ job });
+  });
+
+  // Preview: generate distinct angle candidates for a niche WITHOUT creating any
+  // jobs, so the user can review and pick which ones to turn into reels.
+  app.post("/api/quote-reel/angles", async (req, reply) => {
+    const user = await requireUser(req, reply);
+    if (!user) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const niche = normalizeTextInput(body.prompt);
+    if (!niche) {
+      return reply.code(400).send({ error: "Missing prompt (niche) for angle preview" });
+    }
+
+    const requestedCount = Number(body.count ?? 4);
+    const count = Number.isFinite(requestedCount) ? clamp(Math.round(requestedCount), 3, 6) : 4;
+
+    const rawTone = normalizeTextInput(body.tone) as QuoteReelTone | "";
+    const tone: QuoteReelTone = ALLOWED_TONES.includes(rawTone as QuoteReelTone)
+      ? (rawTone as QuoteReelTone)
+      : "cinematic";
+
+    const seeds = pickDistinctAngleSeeds(count);
+
+    const angles = (
+      await Promise.all(
+        seeds.map((seed) =>
+          generateQuoteReelAngle({ niche, tone, seed }).catch((err) => {
+            console.error("[quote-reel/angles] angle failed:", err);
+            return null;
+          }),
+        ),
+      )
+    ).filter((angle): angle is QuoteReelAngle => angle !== null);
+
+    if (!angles.length) {
+      return reply.code(502).send({ error: "Could not generate angle candidates. Try again." });
+    }
+
+    return reply.send({ angles });
+  });
+
+  // Batch: create several AI reels from one niche at once. If `angles` are
+  // provided (reviewed + selected), one reel is created per angle; otherwise a
+  // distinct seed is chosen per reel (blind variety, used by future automation).
+  app.post("/api/quote-reel/batch", async (req, reply) => {
+    const user = await requireUser(req, reply);
+    if (!user) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const niche = normalizeTextInput(body.prompt);
+    if (!niche) {
+      return reply.code(400).send({ error: "Missing prompt (niche) for batch" });
+    }
+
+    // Reviewed + selected angles take priority; otherwise fall back to count.
+    const selectedAngles = Array.isArray(body.angles)
+      ? body.angles
+          .map(sanitizeAngle)
+          .filter((angle): angle is QuoteReelAngle => angle !== null)
+          .slice(0, 5)
+      : [];
+
+    const requestedCount = Number(body.count ?? 3);
+    const count = selectedAngles.length
+      ? selectedAngles.length
+      : Number.isFinite(requestedCount)
+        ? clamp(Math.round(requestedCount), 2, 5)
+        : 3;
+
+    const rawTone = normalizeTextInput(body.tone) as QuoteReelTone | "";
+    const tone: QuoteReelTone = ALLOWED_TONES.includes(rawTone as QuoteReelTone)
+      ? (rawTone as QuoteReelTone)
+      : "cinematic";
+
+    const rawVisualSource = normalizeTextInput(body.visualSource) as QuoteReelVisualSource | "";
+    const visualSource: QuoteReelVisualSource = ALLOWED_VISUAL_SOURCES.includes(
+      rawVisualSource as QuoteReelVisualSource,
+    )
+      ? (rawVisualSource as QuoteReelVisualSource)
+      : "auto";
+
+    const captionsEnabled = typeof body.captionsEnabled === "boolean" ? body.captionsEnabled : true;
+
+    const rawCaptionStyle = normalizeTextInput(body.captionStyle) as CaptionStyle | "";
+    const captionStyle: CaptionStyle = ALLOWED_CAPTION_STYLES.includes(rawCaptionStyle as CaptionStyle)
+      ? (rawCaptionStyle as CaptionStyle)
+      : "karaoke";
+
+    const rawCaptionPreset = normalizeTextInput(body.captionPreset) as QuoteReelCaptionPreset | "";
+    const captionPreset: QuoteReelCaptionPreset = ALLOWED_QUOTE_REEL_CAPTION_PRESETS.includes(
+      rawCaptionPreset as QuoteReelCaptionPreset,
+    )
+      ? (rawCaptionPreset as QuoteReelCaptionPreset)
+      : getDefaultQuoteReelCaptionPreset();
+
+    const voiceEnabled = typeof body.voiceEnabled === "boolean" ? body.voiceEnabled : true;
+
+    const rawVoicePreset = normalizeTextInput(body.voicePreset) as QuoteReelVoicePreset | "";
+    const voicePreset: QuoteReelVoicePreset = ALLOWED_VOICE_PRESETS.includes(
+      rawVoicePreset as QuoteReelVoicePreset,
+    )
+      ? (rawVoicePreset as QuoteReelVoicePreset)
+      : "storyteller";
+
+    const posterEnabled = typeof body.posterEnabled === "boolean" ? body.posterEnabled : false;
+
+    const targetDurationSecRaw = Number(body.targetDurationSec ?? 70);
+    const minDurationSecRaw = Number(body.minDurationSec ?? 60);
+    const maxDurationSecRaw = Number(body.maxDurationSec ?? 95);
+
+    const targetDurationSec = Number.isFinite(targetDurationSecRaw)
+      ? clamp(targetDurationSecRaw, 45, 180)
+      : 70;
+    const minDurationSec = Number.isFinite(minDurationSecRaw)
+      ? clamp(minDurationSecRaw, 45, 180)
+      : 60;
+    const maxDurationSec = Number.isFinite(maxDurationSecRaw)
+      ? clamp(maxDurationSecRaw, 50, 240)
+      : 95;
+
+    if (minDurationSec > maxDurationSec) {
+      return reply.code(400).send({ error: "minDurationSec cannot be greater than maxDurationSec" });
+    }
+
+    const estimatedDurationForLimits = Math.max(targetDurationSec, minDurationSec, 60);
+
+    // Each item is either a chosen angle (reviewed) or a seed (blind variety).
+    const items: Array<{ angle?: QuoteReelAngle; seed?: ReturnType<typeof pickDistinctAngleSeeds>[number] }> =
+      selectedAngles.length
+        ? selectedAngles.map((angle) => ({ angle }))
+        : pickDistinctAngleSeeds(count).map((seed) => ({ seed }));
+
+    const createdJobs: Job[] = [];
+
+    for (const item of items) {
+      const limit = await enforceJobLimits(user.id, {
+        clipDurationSec: estimatedDurationForLimits,
+        maxClips: 1,
+        aspect: "vertical",
+        jobGoal: "quote_reel",
+        summaryTargetSec: estimatedDurationForLimits,
+      });
+
+      // Stop at the plan limit but keep whatever we already created.
+      if (!limit.ok) break;
+
+      const now = new Date().toISOString();
+
+      const job: Job = {
+        id: randomUUID(),
+        ownerId: user.id,
+        type: "quote_reel",
+        source: `quote_reel:prompt:${niche}`,
+        status: "pending",
+        createdAt: now,
+        updatedAt: now,
+
+        aspect: "vertical",
+        captionsEnabled,
+        captionStyle,
+
+        jobGoal: "quote_reel",
+        clips: [],
+        captionedClips: [],
+        captionedThumbs: [],
+        stage: "queued",
+        progress: 0,
+        reviewReady: false,
+
+        quotePrompt: niche,
+        quoteReelMeta: {
+          mode: "ai_text",
+          tone,
+          visualSource,
+          scriptReviewRequired: true,
+          scriptReviewApproved: false,
+          scriptEdited: false,
+          targetDurationSec,
+          minDurationSec,
+          maxDurationSec,
+          captionsEnabled,
+          captionStyle,
+          captionPreset,
+          voiceEnabled,
+          voicePreset,
+          posterEnabled,
+          autoAngle: true,
+          angleSeed: item.seed,
+          angle: item.angle,
+          musicSuggestions: [],
+          voiceover: {
+            enabled: voiceEnabled,
+            voicePreset,
+          },
+        },
+      };
+
+      await createJob(job, supabaseAdmin());
+      await enqueueJob(job);
+      createdJobs.push(job);
+    }
+
+    if (!createdJobs.length) {
+      return reply.code(402).send({
+        error: "Plan limit reached. Upgrade to create more reels.",
+        upgradeRequired: true,
+      });
+    }
+
+    return reply.code(201).send({
+      jobs: createdJobs,
+      created: createdJobs.length,
+      requested: count,
+    });
   });
 }

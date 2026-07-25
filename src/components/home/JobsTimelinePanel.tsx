@@ -11,6 +11,12 @@ type Props = {
   onDeleteJob: (jobId: string) => Promise<void>;
   openReview: (job: Job) => void;
   onDownload: (fileUrl: string, filename: string, key: string) => Promise<void>;
+  youtubeConnected: boolean;
+  youtubeChannelTitle: string | null;
+  onConnectYoutube: () => Promise<void>;
+  onDisconnectYoutube: () => Promise<void>;
+  publishingJobs: Record<string, boolean>;
+  onPublishYoutube: (jobId: string) => Promise<void>;
 };
 
 export default function JobsTimelinePanel({
@@ -23,6 +29,12 @@ export default function JobsTimelinePanel({
   onDeleteJob,
   onDownload,
   openReview,
+  youtubeConnected,
+  youtubeChannelTitle,
+  onConnectYoutube,
+  onDisconnectYoutube,
+  publishingJobs,
+  onPublishYoutube,
 }: Props) {
   return (
     <aside className="mt-1 w-full lg:mt-0 lg:w-[440px]">
@@ -39,6 +51,27 @@ export default function JobsTimelinePanel({
             className="inline-flex items-center justify-center rounded-full border border-slate-700/90 bg-slate-900/80 px-3 py-1 text-[11px] font-medium text-slate-200 transition hover:border-sky-500 hover:bg-slate-900"
           >
             Refresh
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-500/20 bg-slate-950/70 px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold text-rose-200">YouTube</div>
+            <div className="truncate text-[10px] text-slate-500">
+              {youtubeConnected
+                ? `Connected: ${youtubeChannelTitle ?? "channel"}`
+                : "Connect a channel to publish reels"}
+            </div>
+          </div>
+          <button
+            onClick={youtubeConnected ? onDisconnectYoutube : onConnectYoutube}
+            className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-medium transition ${
+              youtubeConnected
+                ? "border-slate-700 text-slate-300 hover:bg-slate-900"
+                : "border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
+            }`}
+          >
+            {youtubeConnected ? "Disconnect" : "Connect YouTube"}
           </button>
         </div>
 
@@ -60,6 +93,9 @@ export default function JobsTimelinePanel({
               downloadingKey={downloadingKey}
               onDeleteJob={onDeleteJob}
               onDownload={onDownload}
+              youtubeConnected={youtubeConnected}
+              isPublishing={!!publishingJobs[job.id]}
+              onPublishYoutube={onPublishYoutube}
             />
           ))}
         </div>
