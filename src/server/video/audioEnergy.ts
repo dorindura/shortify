@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import path from "path";
 
 export type AudioEnergyFrame = {
@@ -7,15 +8,19 @@ export type AudioEnergyFrame = {
     energy: number; // 0..1
 };
 
+// librosa lives in the project virtualenv; fall back to system python3.
+const VENV_PY = path.join(process.cwd(), ".venv", "bin", "python");
+const PYTHON = existsSync(VENV_PY) ? VENV_PY : "python3";
+
 export async function analyzeAudioEnergyForClip(
     audioPath: string
 ): Promise<AudioEnergyFrame[]> {
     return new Promise((resolve) => {
         const scriptPath = path.join(process.cwd(), "src", "python", "audio_energy.py");
 
-        console.log("[analyzeAudioEnergyForClip] Running python3", scriptPath, audioPath);
+        console.log("[analyzeAudioEnergyForClip] Running", PYTHON, scriptPath, audioPath);
 
-        const proc = spawn("python3", [scriptPath, audioPath], {
+        const proc = spawn(PYTHON, [scriptPath, audioPath], {
             stdio: ["ignore", "pipe", "pipe"],
         });
 

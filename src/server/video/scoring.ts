@@ -5,10 +5,127 @@ import { spawn } from "child_process";
 import fsPromises from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { analyzeAudioEnergyForClip, type AudioEnergyFrame } from "./audioEnergy";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
+
+type Silence = { start: number; end: number };
+
+/** Detect silence intervals (natural pauses) so cuts never land mid-word. */
+async function detectSilences(audioPath: string): Promise<Silence[]> {
+  return new Promise((resolve) => {
+    const proc = spawn("ffmpeg", [
+      "-i",
+      audioPath,
+      "-af",
+      "silencedetect=noise=-30dB:d=0.3",
+      "-f",
+      "null",
+      "-",
+    ]);
+    let err = "";
+    proc.stderr.on("data", (d) => (err += d.toString()));
+    proc.on("error", () => resolve([]));
+    proc.on("close", () => {
+      const silences: Silence[] = [];
+      let pendingStart: number | null = null;
+      for (const line of err.split("\n")) {
+        const s = line.match(/silence_start:\s*(-?[\d.]+)/);
+        if (s) pendingStart = Number(s[1]);
+        const e = line.match(/silence_end:\s*(-?[\d.]+)/);
+        if (e && pendingStart !== null) {
+          silences.push({ start: pendingStart, end: Number(e[1]) });
+          pendingStart = null;
+        }
+      }
+      resolve(silences);
+    });
+  });
+}
+
+// Snap a clip START to a nearby speech onset (end of a silence) so we begin on a
+// clean word boundary, not mid-syllable.
+function snapStartToSilence(t: number, silences: Silence[], tol = 1.0): number {
+  let best = t;
+  let bestDist = tol;
+  for (const s of silences) {
+    const d = Math.abs(s.end - t);
+    if (d <= bestDist) {
+      best = s.end;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+// Snap a clip END to a nearby speech offset (start of a silence) so we end in a
+// natural pause, not mid-word.
+function snapEndToSilence(t: number, silences: Silence[], tol = 1.0): number {
+  let best = t;
+  let bestDist = tol;
+  for (const s of silences) {
+    const d = Math.abs(s.start - t);
+    if (d <= bestDist) {
+      best = s.start;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+function meanEnergy(energy: AudioEnergyFrame[], from: number, to: number): number {
+  const win = energy.filter((f) => f.tStart >= from && f.tStart < to);
+  if (!win.length) return 0;
+  return win.reduce((sum, f) => sum + f.energy, 0) / win.length;
+}
+
+// The "end on the payoff" move: the catchy line is usually a delivery/emotional
+// peak that lands a beat or two AFTER a complete thought. If a strong energy peak
+// sits just past the clip's end — within the SAME idea (no long pause between) —
+// extend the clip through it so we don't cut right before the moment that makes
+// people share. Never crosses a real pause into an unrelated idea.
+function extendToPayoff(
+  clipStart: number,
+  clipEnd: number,
+  energy: AudioEnergyFrame[],
+  silences: Silence[],
+  segments: WhisperSegment[],
+  duration: number,
+  hardCeilingSec: number,
+): number {
+  if (!energy.length) return clipEnd;
+
+  const IDEA_GAP = 0.9; // a pause this long = a new idea; don't cross it
+  const LOOKAHEAD = 12; // seconds to search for the payoff
+  const PAYOFF_RATIO = 1.15; // peak must beat the clip's own baseline by this
+
+  const hardEnd = Math.min(clipStart + hardCeilingSec, duration);
+  let searchEnd = Math.min(clipEnd + LOOKAHEAD, hardEnd);
+
+  // Stop the search at the first real pause after the clip (idea boundary).
+  const gap = silences.find((s) => s.start >= clipEnd - 0.2 && s.end - s.start >= IDEA_GAP);
+  if (gap) searchEnd = Math.min(searchEnd, gap.start);
+
+  if (searchEnd <= clipEnd + 1) return clipEnd;
+
+  const baseline = meanEnergy(energy, clipStart, clipEnd) || 0.25;
+  const window = energy.filter((f) => f.tStart > clipEnd && f.tStart <= searchEnd);
+  if (!window.length) return clipEnd;
+
+  const peak = window.reduce((a, b) => (b.energy > a.energy ? b : a));
+  if (peak.energy < baseline * PAYOFF_RATIO && peak.energy < 0.45) return clipEnd;
+
+  // Extend just past the peak, then snap to the end of the sentence that contains
+  // it (and to a silence if one is near), so the punchline finishes cleanly.
+  let newEnd = peak.tEnd + 1.0;
+  const seg = segments.find((s) => s.end >= newEnd);
+  if (seg) newEnd = seg.end;
+  newEnd = snapEndToSilence(newEnd, silences, 1.2);
+
+  return clamp(Math.max(clipEnd, Math.min(newEnd, hardEnd)), clipStart, duration);
+}
 
 export type WhisperSegment = {
   id?: number;
@@ -319,21 +436,24 @@ async function selectMomentsWithLLM(
     messages: [
       {
         role: "system",
-        content: `You are an expert short-form video editor who finds the most engaging, self-contained moments in a long video for standalone vertical shorts (TikTok / Reels / YouTube Shorts).
+        content: `You are an elite short-form video editor. From a long video, you find the moments most likely to STOP THE SCROLL and get shared as standalone vertical shorts (TikTok / Reels / YouTube Shorts).
 
-Each selected moment MUST:
-- be a complete, self-contained thought with a clear hook and payoff (never start or end mid-idea),
-- make sense on its own, without the rest of the video for context,
-- be genuinely compelling: a strong opinion, insight, story, surprising fact, emotional beat, or punchy exchange,
-- NOT overlap in time with any other selected moment.
+Pick for VIRALITY, not just completeness. The best moments are:
+- a strong hook in the first seconds (a bold claim, a question, a surprising line, tension),
+- carried by a real emotional or delivery peak — the punchline, the mic-drop line, the "wait what" moment, the payoff people quote,
+- self-contained: they make sense with zero outside context,
+- genuinely compelling: a strong opinion, insight, story, surprising fact, emotional beat, or punchy exchange.
+Avoid flat, meandering, mid-explanation stretches even if they are "complete" — those die on the feed.
 
-CRITICAL about boundaries and length:
-- The idea's completeness ALWAYS wins over hitting a target length.
-- "start" MUST equal the start timestamp of the FIRST transcript line of the idea. "end" MUST equal the end timestamp of the LAST transcript line of the idea. Copy those exact timestamps from the transcript — do not invent values and do not cut inside a line.
-- End the clip the moment the thought resolves. Do NOT run into the next, unrelated idea just to make the clip longer, and do NOT stop early and leave the thought unfinished just to be closer to the target.
-- The target length is only a rough hint; the real length is whatever the complete idea takes.
+CRITICAL about boundaries — end ON the payoff:
+- "start" = the start timestamp of the FIRST transcript line of the moment. "end" = the end timestamp of the LAST line — and that last line MUST be the PAYOFF/punchline, the most quotable beat, NOT the setup before it.
+- Never stop early and cut the idea right as it gets good. Ride it THROUGH the catchy line, then stop.
+- Never end mid-sentence. Copy exact timestamps from the transcript; don't invent values.
+- Don't run past the payoff into an unrelated next idea.
+- The target length is only a rough hint; the real length is whatever makes the moment land.
+- Moments must NOT overlap in time.
 
-Order the moments best-first.`,
+Order the moments best-first (most viral first).`,
       },
       {
         role: "user",
@@ -394,6 +514,7 @@ function normalizeWindow(
   segments: WhisperSegment[],
   duration: number,
   hardCeilingSec: number,
+  silences: Silence[] = [],
 ): { start: number; end: number } {
   let start = clamp(desiredStart, 0, duration);
   let end = clamp(desiredEnd, 0, duration);
@@ -404,6 +525,11 @@ function normalizeWindow(
 
   const after = segments.filter((s) => s.end >= end - 0.25);
   if (after.length) end = after[0].end;
+
+  // Then refine against actual audio pauses — the precise fix for mid-word cuts,
+  // since transcript timestamps can drift a word or two off the real speech.
+  start = snapStartToSilence(start, silences);
+  end = snapEndToSilence(end, silences);
 
   // Degenerate pick: fall back to the single sentence at the start.
   if (end <= start) {
@@ -453,11 +579,24 @@ export async function analyzeTranscriptForClips(
     return [];
   }
 
+  // Audio signal: energy peaks reveal the delivery/emotional payoff the transcript
+  // can't hear, and silences give precise (non-mid-word) cut points. Both degrade
+  // gracefully to [] if extraction fails.
+  let energy: AudioEnergyFrame[] = [];
+  let silences: Silence[] = [];
+  const audioPath = await extractCompressedAudio(videoPath).catch(() => "");
+  if (audioPath) {
+    [energy, silences] = await Promise.all([
+      analyzeAudioEnergyForClip(audioPath).catch(() => [] as AudioEnergyFrame[]),
+      detectSilences(audioPath).catch(() => [] as Silence[]),
+    ]);
+    await fsPromises.unlink(audioPath).catch(() => {});
+  }
+
   const MIN_GAP = 1.0;
-  // Length is idea-driven: the clip ends where the thought ends. A hard ceiling
-  // (3 min) protects platform limits; anything below MIN_CLIP_SEC is dropped
-  // rather than padded (never extend into unrelated footage). The chosen target
-  // is only a hint to the LLM, never a forced cut.
+  // Length is idea-driven: the clip ends where the thought (and its payoff) ends.
+  // A hard ceiling (3 min) protects platform limits; anything below MIN_CLIP_SEC
+  // is dropped rather than padded. The chosen target is only a hint to the LLM.
   const HARD_CEILING_SEC = 180;
   const MIN_CLIP_SEC = 7;
   const accepted: ClipCandidate[] = [];
@@ -471,7 +610,17 @@ export async function analyzeTranscriptForClips(
   ): boolean => {
     if (accepted.length >= maxClips) return false;
 
-    const w = normalizeWindow(desiredStart, desiredEnd, segments, duration, HARD_CEILING_SEC);
+    const w = normalizeWindow(
+      desiredStart,
+      desiredEnd,
+      segments,
+      duration,
+      HARD_CEILING_SEC,
+      silences,
+    );
+
+    // Extend through the delivery peak so the clip ends ON the catchy line.
+    w.end = extendToPayoff(w.start, w.end, energy, silences, segments, duration, HARD_CEILING_SEC);
 
     if (w.end - w.start < MIN_CLIP_SEC) return false;
     if (accepted.some((c) => windowsOverlap(c, w, MIN_GAP))) return false;
