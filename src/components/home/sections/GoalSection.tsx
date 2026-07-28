@@ -8,6 +8,44 @@ type Props = {
   isPro: boolean;
 };
 
+const GOAL_CARDS: {
+  goal: LocalJobGoal;
+  icon: string;
+  title: string;
+  desc: string;
+  tag: string;
+  activeClass: string;
+  hoverClass: string;
+}[] = [
+  {
+    goal: "shorts",
+    icon: "✂️",
+    title: "AI Shorts",
+    desc: "Auto-detect the best moments from one video and cut multiple clips.",
+    tag: "From a video",
+    activeClass: "border-sky-500 bg-sky-500/10 text-slate-50",
+    hoverClass: "hover:border-sky-500/60",
+  },
+  {
+    goal: "quote_reel",
+    icon: "🎙️",
+    title: "Story Reel",
+    desc: "Faceless vertical reel from a prompt or your text — voice, captions, scenes.",
+    tag: "Pro · From text",
+    activeClass: "border-fuchsia-500 bg-fuchsia-500/10 text-slate-50",
+    hoverClass: "hover:border-fuchsia-500/60",
+  },
+  {
+    goal: "multi_source_edit",
+    icon: "🎬",
+    title: "Multi-Source",
+    desc: "Stitch exact segments from up to 5 videos into one final timeline.",
+    tag: "Manual edit",
+    activeClass: "border-cyan-500 bg-cyan-500/10 text-slate-50",
+    hoverClass: "hover:border-cyan-500/60",
+  },
+];
+
 export default function GoalSection({
   jobGoal,
   setJobGoal,
@@ -16,81 +54,34 @@ export default function GoalSection({
   isPro,
 }: Props) {
   return (
-    <div className="mt-4 border-t border-slate-800/80 pt-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-50">Goal</h2>
-        <span className="text-[10px] text-slate-500">
-          {jobGoal === "summary"
-            ? `Summary ~${summaryTargetSec}s`
-            : jobGoal === "quote_reel"
-              ? "AI Story Reel"
-              : jobGoal === "multi_source_edit"
-                ? "Multi-source Edit"
-                : "Multiple shorts"}
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-3">
-        <button
-          type="button"
-          onClick={() => setJobGoal("shorts")}
-          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-            jobGoal === "shorts"
-              ? "border-sky-500 bg-slate-900/80 text-slate-50"
-              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-sky-500/60"
-          }`}
-        >
-          <div className="font-semibold">AI Shorts</div>
-          <div className="mt-0.5 text-[11px] text-slate-400">
-            Generate multiple clips (maxClips) at your chosen duration.
-          </div>
-        </button>
-
-        {/*<button*/}
-        {/*  type="button"*/}
-        {/*  onClick={() => setJobGoal("summary")}*/}
-        {/*  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${*/}
-        {/*    jobGoal === "summary"*/}
-        {/*      ? "border-emerald-500 bg-slate-900/80 text-slate-50"*/}
-        {/*      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-emerald-500/60"*/}
-        {/*  }`}*/}
-        {/*>*/}
-        {/*  <div className="font-semibold">AI Story Summary (Pro)</div>*/}
-        {/*  <div className="mt-0.5 text-[11px] text-slate-400">*/}
-        {/*    One highlight reel around a target length.*/}
-        {/*  </div>*/}
-        {/*</button>*/}
-
-        <button
-          type="button"
-          onClick={() => setJobGoal("quote_reel")}
-          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-            jobGoal === "quote_reel"
-              ? "border-fuchsia-500 bg-slate-900/80 text-slate-50"
-              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-fuchsia-500/60"
-          }`}
-        >
-          <div className="font-semibold">AI Story Reel (Pro)</div>
-          <div className="mt-0.5 text-[11px] text-slate-400">
-            Generate a 60s+ faceless vertical reel from your text or from an AI topic prompt, with
-            voice-over, captions, and rapid scene changes.
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setJobGoal("multi_source_edit")}
-          className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
-            jobGoal === "multi_source_edit"
-              ? "border-cyan-500 bg-slate-900/80 text-slate-50"
-              : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-cyan-500/60"
-          }`}
-        >
-          <div className="font-semibold">Multi-Source Edit</div>
-          <div className="mt-0.5 text-[11px] text-slate-400">
-            Manually combine segments from up to 5 source URLs into one final timeline.
-          </div>
-        </button>
+    <div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        {GOAL_CARDS.map((card) => {
+          const active = jobGoal === card.goal;
+          return (
+            <button
+              key={card.goal}
+              type="button"
+              onClick={() => setJobGoal(card.goal)}
+              className={`rounded-xl border px-3 py-3 text-left text-xs transition hover:-translate-y-0.5 ${
+                active
+                  ? card.activeClass
+                  : `border-slate-800 bg-slate-950/70 text-slate-300 ${card.hoverClass}`
+              }`}
+            >
+              <div className="text-lg leading-none">{card.icon}</div>
+              <div className="mt-2 text-sm font-semibold">{card.title}</div>
+              <div className="mt-1 text-[11px] text-slate-400">{card.desc}</div>
+              <span
+                className={`mt-2.5 inline-block rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase ${
+                  active ? "border-slate-600 text-slate-200" : "border-slate-800 text-slate-500"
+                }`}
+              >
+                {card.tag}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className={`mt-4 ${jobGoal !== "summary" ? "hidden" : ""}`}>

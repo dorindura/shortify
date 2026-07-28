@@ -58,3 +58,32 @@ export type MultiSourceSegmentDraft = {
   endSec: string;
   order: number;
 };
+
+export type SavedRecipe = {
+  id: string;
+  name: string;
+  goal: LocalJobGoal;
+  createdAt: string;
+
+  // Shorts config
+  aspect?: LocalJobAspect;
+  clipDurationSec?: number;
+  maxClips?: number;
+  selectionMode?: LocalShortsSelectionMode;
+  generateTitles?: boolean;
+  captionsEnabled?: boolean;
+  captionStyle?: LocalCaptionStyle;
+
+  // Story reel config
+  quoteMode?: LocalQuoteReelMode;
+  quoteTone?: LocalQuoteTone;
+  quoteVisualSource?: LocalQuoteVisualSource;
+  voiceEnabled?: boolean;
+  voicePreset?: LocalQuoteVoicePreset;
+  posterEnabled?: boolean;
+  autoAngle?: boolean;
+  quoteCaptionPreset?: LocalQuoteCaptionPreset;
+  targetDurationSec?: number;
+  minDurationSec?: number;
+  maxDurationSec?: number;
+};

@@ -1,4 +1,62 @@
+import type { Job } from "@lib/jobsStore";
 import type { CustomRange, MultiSourceInput, MultiSourceSegmentDraft } from "./home.types";
+
+/**
+ * Resolve a stored asset URL into something the browser can render.
+ *
+ * - Plain http(s) / relative URLs pass through unchanged.
+ * - `local:` URLs (used when LOCAL_RENDER_OUTPUTS=true) point at an absolute
+ *   path on disk. When that path lives under the app's `public/` directory it is
+ *   served by Next at the corresponding web path (e.g. `/thumbs/abc.jpg`), so we
+ *   rewrite it. Anything outside `public/` can't be served, so we return null.
+ */
+export function resolveAssetUrl(raw?: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("local:")) return raw;
+
+  const diskPath = raw.slice("local:".length).replace(/\\/g, "/");
+  const marker = "/public/";
+  const idx = diskPath.lastIndexOf(marker);
+  if (idx === -1) return null;
+
+  return diskPath.slice(idx + marker.length - 1); // keep leading slash: "/thumbs/abc.jpg"
+}
+
+/** First browser-renderable thumbnail for a job, if any. */
+export function resolveJobThumb(job: Job): string | null {
+  for (const raw of job.captionedThumbs ?? []) {
+    const resolved = resolveAssetUrl(raw);
+    if (resolved) return resolved;
+  }
+  return resolveAssetUrl(job.quoteReelMeta?.posterUrl);
+}
+
+export function isRecoverableQuoteReelRender(job: Job): boolean {
+  const hasScript = (job.quoteReelMeta?.finalScript ?? "").trim().length >= 20;
+  return (
+    job.jobGoal === "quote_reel" &&
+    job.status === "pending" &&
+    job.stage === "queued" &&
+    hasScript
+  );
+}
+
+export function jobNeedsReview(job: Job): boolean {
+  const shortsReview = job.jobGoal === "shorts" && !!job.reviewReady;
+  const multiReview = job.jobGoal === "multi_source_edit" && !!job.reviewReady;
+  const quoteReview =
+    job.jobGoal === "quote_reel" && (!!job.reviewReady || isRecoverableQuoteReelRender(job));
+  return shortsReview || multiReview || quoteReview;
+}
+
+export type JobGroup = "review" | "working" | "done" | "failed";
+
+export function jobGroup(job: Job): JobGroup {
+  if (jobNeedsReview(job)) return "review";
+  if (job.status === "failed") return "failed";
+  if (job.status === "done") return "done";
+  return "working";
+}
 
 export function parseTimeToSeconds(input: string): number | null {
   const value = input.trim();

@@ -21,6 +21,12 @@ export default function OutputFormatSection({
 }: Props) {
   const useLocalFullX2 = showLocalOutputModes && shortsOutputMode === "full_x2_local";
 
+  // Center partial rows: 3 per row when the local option is shown (→ 3 + 2),
+  // otherwise 4 per row. Flex + justify-center keeps the last row centered.
+  const itemClass = `group relative w-full sm:w-[calc(50%-0.375rem)] ${
+    showLocalOutputModes ? "lg:w-[calc(33.333%-0.5rem)]" : "lg:w-[calc(25%-0.5625rem)]"
+  }`;
+
   return (
     <div className={`space-y-3 ${isQuoteReel ? "pointer-events-none opacity-40" : ""}`}>
       <div className="flex items-center justify-between">
@@ -28,12 +34,8 @@ export default function OutputFormatSection({
         <span className="text-[10px] text-slate-500">Optimized for {optimizedLabel}</span>
       </div>
 
-      <div
-        className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
-          showLocalOutputModes ? "lg:grid-cols-5" : "lg:grid-cols-4"
-        }`}
-      >
-        <label className="group relative">
+      <div className="flex flex-wrap justify-center gap-3">
+        <label className={itemClass}>
           <input
             type="radio"
             name="aspect"
@@ -61,7 +63,7 @@ export default function OutputFormatSection({
           </div>
         </label>
 
-        <label className="group relative">
+        <label className={itemClass}>
           <input
             type="radio"
             name="aspect"
@@ -91,7 +93,7 @@ export default function OutputFormatSection({
           </div>
         </label>
 
-        <label className="group relative">
+        <label className={itemClass}>
           <input
             type="radio"
             name="aspect"
@@ -127,7 +129,7 @@ export default function OutputFormatSection({
           </div>
         </label>
 
-        <label className="group relative">
+        <label className={itemClass}>
           <input
             type="radio"
             name="aspect"
@@ -164,7 +166,7 @@ export default function OutputFormatSection({
         </label>
 
         {showLocalOutputModes && (
-          <label className="group relative">
+          <label className={itemClass}>
             <input
               type="radio"
               name="aspect"

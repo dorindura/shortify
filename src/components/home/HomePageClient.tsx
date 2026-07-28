@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import CreateJobPanel from "./CreateJobPanel";
 import JobsTimelinePanel from "./JobsTimelinePanel";
+import RecipePanel from "./RecipePanel";
 import type {
   CustomRange,
   LocalCaptionStyle,
@@ -22,6 +23,7 @@ import type {
   LocalShortsSelectionMode,
   MultiSourceInput,
   MultiSourceSegmentDraft,
+  SavedRecipe,
 } from "./home.types";
 import { buildCustomRangesPayload, buildMultiSourceSegmentsPayload } from "./home.utils";
 import JobReviewPanel from "@/components/home/review/JobReviewPanel";
@@ -133,6 +135,7 @@ export default function HomePageClient() {
   const [isPro, setIsPro] = useState(false);
   const [deletingJobs, setDeletingJobs] = useState<Record<string, boolean>>({});
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
 
   const optimizedLabel = isQuoteReel
     ? "Instagram Reels / TikTok / Shorts"
@@ -574,11 +577,15 @@ export default function HomePageClient() {
     }
   }
 
-  async function handleUrlSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleGenerate(e?: React.FormEvent) {
+    e?.preventDefault();
 
     if (jobGoal === "quote_reel") {
-      await createQuoteReelJob();
+      if (autoAngle && selectedAngleIdx.length > 0) {
+        await createQuoteReelsFromAngles();
+      } else {
+        await createQuoteReelJob();
+      }
       return;
     }
 
@@ -586,6 +593,9 @@ export default function HomePageClient() {
       await createMultiSourceEditJob();
       return;
     }
+
+    // Shorts / summary — custom selection needs at least one valid period.
+    if (selectionMode === "custom" && validCustomRangesCount === 0) return;
 
     if (selectedUploadFile) {
       await createUploadJob(selectedUploadFile);
@@ -860,6 +870,196 @@ export default function HomePageClient() {
     setSelectionMode("auto");
   }, [isMultiSourceEdit]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("hookify.recipes");
+      if (raw) {
+        const parsed = JSON.parse(raw) as SavedRecipe[];
+        if (Array.isArray(parsed)) setSavedRecipes(parsed);
+      }
+    } catch {
+      // ignore malformed saved recipes
+    }
+  }, []);
+
+  function persistRecipes(next: SavedRecipe[]) {
+    setSavedRecipes(next);
+    try {
+      localStorage.setItem("hookify.recipes", JSON.stringify(next));
+    } catch {
+      // ignore storage/quota errors
+    }
+  }
+
+  const CAPTION_LABELS: Record<LocalCaptionStyle, string> = {
+    karaoke: "karaoke",
+    boldYellow: "bold-yellow",
+    wordByWord: "word-by-word",
+    progressiveWords: "progressive",
+    subtle: "subtle",
+  };
+
+  const VOICE_LABELS: Record<LocalQuoteVoicePreset, string> = {
+    storyteller: "English-grandpa",
+    dark_male: "dark male",
+    motivational_male: "motivational male",
+    soft_female: "soft female",
+    neutral: "Romanian-grandpa",
+  };
+
+  const QUOTE_CAPTION_LABELS: Record<LocalQuoteCaptionPreset, string> = {
+    card_bottom_premium_karaoke: "premium bottom",
+    card_center_word_by_word: "center word-by-word",
+    card_center_progressive_words: "center progressive",
+    card_center_premium_word: "center premium",
+    card_bottom_karaoke: "bottom karaoke",
+  };
+
+  function aspectWord(value: LocalJobAspect) {
+    return value === "horizontal"
+      ? "horizontal"
+      : value === "verticalLetterbox"
+        ? "vertical (bars)"
+        : value === "verticalFit"
+          ? "centered"
+          : "vertical";
+  }
+
+  const reelHasAngleBatch = isQuoteReel && autoAngle && selectedAngleIdx.length > 0;
+
+  const canGenerate = (() => {
+    if (isQuoteReel) {
+      if (reelHasAngleBatch) return true;
+      return quoteMode === "manual_text" ? !!quoteText.trim() : !!quotePrompt.trim();
+    }
+    if (isMultiSourceEdit) return validMultiSourceSegmentsCount > 0;
+    const hasSource = !!url.trim() || !!selectedUploadFile;
+    if (!hasSource) return false;
+    if (selectionMode === "custom" && validCustomRangesCount === 0) return false;
+    return true;
+  })();
+
+  const ctaLabel = isQuoteReel
+    ? reelHasAngleBatch
+      ? `Generate ${selectedAngleIdx.length} reel${selectedAngleIdx.length === 1 ? "" : "s"}`
+      : "Generate Story Reel"
+    : isMultiSourceEdit
+      ? "Build the edit"
+      : selectedUploadFile
+        ? "Generate from upload"
+        : "Generate shorts";
+
+  const recipeSummary = (() => {
+    if (isQuoteReel) {
+      const lead = reelHasAngleBatch
+        ? `${selectedAngleIdx.length} Story Reels (auto-angle)`
+        : "A Story Reel";
+      const voice = voiceEnabled ? `${VOICE_LABELS[voicePreset]} voice` : "no voice-over";
+      const caps = captionsEnabled
+        ? `${QUOTE_CAPTION_LABELS[quoteCaptionPreset]} captions`
+        : "no captions";
+      const visuals = quoteVisualSource === "cartoons" ? ", cartoon visuals" : "";
+      const poster = posterEnabled ? ", plus a TikTok poster" : "";
+      return `${lead}, ~${targetDurationSec}s vertical, ${quoteTone} tone, ${voice}, ${caps}${visuals}${poster}.`;
+    }
+
+    if (isMultiSourceEdit) {
+      if (validMultiSourceSegmentsCount === 0) {
+        return "Add segments from your sources to build the timeline.";
+      }
+      return `One ${aspectWord(aspect)} timeline stitched from ${validMultiSourceSegmentsCount} segment${
+        validMultiSourceSegmentsCount === 1 ? "" : "s"
+      } across your sources, in order.`;
+    }
+
+    const caps = captionsEnabled ? `${CAPTION_LABELS[captionStyle]} captions` : "no captions";
+    if (selectionMode === "custom") {
+      return `${validCustomRangesCount || "Your"} ${aspectWord(aspect)} short${
+        validCustomRangesCount === 1 ? "" : "s"
+      } from your custom periods, with ${caps}.`;
+    }
+    return `${maxClips} ${aspectWord(aspect)} short${maxClips === 1 ? "" : "s"}, ~${clipDurationSec}s each, with ${caps}, auto-detected by AI.`;
+  })();
+
+  function saveRecipe() {
+    const suggested = isQuoteReel
+      ? `${quoteTone} reel · ${VOICE_LABELS[voicePreset]}`
+      : isMultiSourceEdit
+        ? `Multi-source · ${aspectWord(aspect)}`
+        : `${maxClips}× ${clipDurationSec}s · ${aspectWord(aspect)}`;
+    const name = window.prompt("Name this recipe", suggested)?.trim();
+    if (!name) return;
+
+    const base = {
+      id: crypto.randomUUID(),
+      name,
+      goal: jobGoal,
+      createdAt: new Date().toISOString(),
+    };
+
+    const recipe: SavedRecipe = isQuoteReel
+      ? {
+          ...base,
+          quoteMode,
+          quoteTone,
+          quoteVisualSource,
+          voiceEnabled,
+          voicePreset,
+          posterEnabled,
+          autoAngle,
+          quoteCaptionPreset,
+          captionsEnabled,
+          targetDurationSec,
+          minDurationSec,
+          maxDurationSec,
+        }
+      : {
+          ...base,
+          aspect,
+          clipDurationSec,
+          maxClips,
+          selectionMode,
+          generateTitles,
+          captionsEnabled,
+          captionStyle,
+        };
+
+    persistRecipes([recipe, ...savedRecipes].slice(0, 12));
+  }
+
+  function applyRecipe(recipe: SavedRecipe) {
+    setJobGoal(recipe.goal);
+
+    if (recipe.goal === "quote_reel") {
+      if (recipe.quoteMode) setQuoteMode(recipe.quoteMode);
+      if (recipe.quoteTone) setQuoteTone(recipe.quoteTone);
+      if (recipe.quoteVisualSource) setQuoteVisualSource(recipe.quoteVisualSource);
+      if (typeof recipe.voiceEnabled === "boolean") setVoiceEnabled(recipe.voiceEnabled);
+      if (recipe.voicePreset) setVoicePreset(recipe.voicePreset);
+      if (typeof recipe.posterEnabled === "boolean") setPosterEnabled(recipe.posterEnabled);
+      if (typeof recipe.autoAngle === "boolean") setAutoAngle(recipe.autoAngle);
+      if (recipe.quoteCaptionPreset) setQuoteCaptionPreset(recipe.quoteCaptionPreset);
+      if (typeof recipe.captionsEnabled === "boolean") setCaptionsEnabled(recipe.captionsEnabled);
+      if (typeof recipe.targetDurationSec === "number")
+        setTargetDurationSec(recipe.targetDurationSec);
+      if (typeof recipe.minDurationSec === "number") setMinDurationSec(recipe.minDurationSec);
+      if (typeof recipe.maxDurationSec === "number") setMaxDurationSec(recipe.maxDurationSec);
+      return;
+    }
+
+    if (recipe.aspect) setAspect(recipe.aspect);
+    if (typeof recipe.clipDurationSec === "number") setClipDurationSec(recipe.clipDurationSec);
+    if (typeof recipe.maxClips === "number") setMaxClips(recipe.maxClips);
+    if (recipe.selectionMode) setSelectionMode(recipe.selectionMode);
+    if (typeof recipe.generateTitles === "boolean") setGenerateTitles(recipe.generateTitles);
+    if (typeof recipe.captionsEnabled === "boolean") setCaptionsEnabled(recipe.captionsEnabled);
+    if (recipe.captionStyle) setCaptionStyle(recipe.captionStyle);
+  }
+
+  function deleteRecipe(id: string) {
+    persistRecipes(savedRecipes.filter((recipe) => recipe.id !== id));
+  }
+
   if (authLoading || !user) return <div className="p-6">Loading...</div>;
 
   return (
@@ -917,81 +1117,28 @@ export default function HomePageClient() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row">
-        <div className="flex-1 space-y-5">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start">
+        <div className="flex-1">
           <CreateJobPanel
             loading={loading}
-            url={url}
-            setUrl={setUrl}
-            paywallMessage={paywallMessage}
-            showUpgrade={showUpgrade}
-            startCheckout={startCheckout}
-            handleUrlSubmit={handleUrlSubmit}
-            handleFileChange={handleFileChange}
-            selectedUploadFileName={selectedUploadFile?.name ?? null}
-            uploadInputResetKey={uploadInputResetKey}
-            clearSelectedUploadFile={clearSelectedUploadFile}
-            isQuoteReel={isQuoteReel}
-            aspect={aspect}
-            setAspect={setAspect}
-            shortsOutputMode={shortsOutputMode}
-            setShortsOutputMode={setShortsOutputMode}
-            showLocalOutputModes={showLocalOutputModes}
-            optimizedLabel={optimizedLabel}
+            isPro={isPro}
             jobGoal={jobGoal}
             setJobGoal={setJobGoal}
             summaryTargetSec={summaryTargetSec}
             setSummaryTargetSec={setSummaryTargetSec}
-            isPro={isPro}
-            selectionMode={selectionMode}
-            setSelectionMode={setSelectionMode}
-            customRanges={customRanges}
-            onAddCustomClip={addCustomClip}
-            onRemoveCustomClip={removeCustomClip}
-            onAddCustomRange={addCustomRange}
-            onRemoveCustomRange={removeCustomRange}
-            onChangeCustomRange={updateCustomRange}
-            validCustomRangesCount={validCustomRangesCount}
-            clipDurationSec={clipDurationSec}
-            setClipDurationSec={setClipDurationSec}
-            maxClips={maxClips}
-            setMaxClips={setMaxClips}
-            generateTitles={generateTitles}
-            setGenerateTitles={setGenerateTitles}
-            quotePrompt={quotePrompt}
-            setQuotePrompt={setQuotePrompt}
-            quoteTone={quoteTone}
-            setQuoteTone={setQuoteTone}
-            quoteVisualSource={quoteVisualSource}
-            setQuoteVisualSource={setQuoteVisualSource}
-            createQuoteReelJob={createQuoteReelJob}
-            captionsEnabled={captionsEnabled}
-            setCaptionsEnabled={setCaptionsEnabled}
-            captionStyle={captionStyle}
-            setCaptionStyle={setCaptionStyle}
-            isMultiSourceEdit={isMultiSourceEdit}
-            multiSourceInputs={multiSourceInputs}
-            multiSourceSegments={multiSourceSegments}
-            onAddMultiSourceInput={addMultiSourceInput}
-            onRemoveMultiSourceInput={removeMultiSourceInput}
-            onChangeMultiSourceUrl={changeMultiSourceUrl}
-            onAddMultiSourceSegment={addMultiSourceSegment}
-            onRemoveMultiSourceSegment={removeMultiSourceSegment}
-            onChangeMultiSourceSegment={changeMultiSourceSegment}
-            validMultiSourceSegmentsCount={validMultiSourceSegmentsCount}
-            createMultiSourceEditJob={createMultiSourceEditJob}
+            url={url}
+            setUrl={setUrl}
+            onEnterSubmit={handleGenerate}
+            handleFileChange={handleFileChange}
+            selectedUploadFileName={selectedUploadFile?.name ?? null}
+            uploadInputResetKey={uploadInputResetKey}
+            clearSelectedUploadFile={clearSelectedUploadFile}
             quoteMode={quoteMode}
             setQuoteMode={setQuoteMode}
+            quotePrompt={quotePrompt}
+            setQuotePrompt={setQuotePrompt}
             quoteText={quoteText}
             setQuoteText={setQuoteText}
-            quoteCaptionPreset={quoteCaptionPreset}
-            setQuoteCaptionPreset={setQuoteCaptionPreset}
-            voiceEnabled={voiceEnabled}
-            setVoiceEnabled={setVoiceEnabled}
-            voicePreset={voicePreset}
-            setVoicePreset={setVoicePreset}
-            posterEnabled={posterEnabled}
-            setPosterEnabled={setPosterEnabled}
             autoAngle={autoAngle}
             setAutoAngle={setAutoAngle}
             batchCount={batchCount}
@@ -1001,7 +1148,50 @@ export default function HomePageClient() {
             selectedAngleIdx={selectedAngleIdx}
             onPreviewAngles={previewQuoteReelAngles}
             onToggleAngle={toggleAngleSelection}
-            onCreateFromAngles={createQuoteReelsFromAngles}
+            multiSourceInputs={multiSourceInputs}
+            multiSourceSegments={multiSourceSegments}
+            onAddMultiSourceInput={addMultiSourceInput}
+            onRemoveMultiSourceInput={removeMultiSourceInput}
+            onChangeMultiSourceUrl={changeMultiSourceUrl}
+            onAddMultiSourceSegment={addMultiSourceSegment}
+            onRemoveMultiSourceSegment={removeMultiSourceSegment}
+            onChangeMultiSourceSegment={changeMultiSourceSegment}
+            aspect={aspect}
+            setAspect={setAspect}
+            shortsOutputMode={shortsOutputMode}
+            setShortsOutputMode={setShortsOutputMode}
+            showLocalOutputModes={showLocalOutputModes}
+            optimizedLabel={optimizedLabel}
+            selectionMode={selectionMode}
+            setSelectionMode={setSelectionMode}
+            customRanges={customRanges}
+            onAddCustomClip={addCustomClip}
+            onRemoveCustomClip={removeCustomClip}
+            onAddCustomRange={addCustomRange}
+            onRemoveCustomRange={removeCustomRange}
+            onChangeCustomRange={updateCustomRange}
+            clipDurationSec={clipDurationSec}
+            setClipDurationSec={setClipDurationSec}
+            maxClips={maxClips}
+            setMaxClips={setMaxClips}
+            generateTitles={generateTitles}
+            setGenerateTitles={setGenerateTitles}
+            captionsEnabled={captionsEnabled}
+            setCaptionsEnabled={setCaptionsEnabled}
+            captionStyle={captionStyle}
+            setCaptionStyle={setCaptionStyle}
+            quoteTone={quoteTone}
+            setQuoteTone={setQuoteTone}
+            quoteVisualSource={quoteVisualSource}
+            setQuoteVisualSource={setQuoteVisualSource}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
+            voicePreset={voicePreset}
+            setVoicePreset={setVoicePreset}
+            posterEnabled={posterEnabled}
+            setPosterEnabled={setPosterEnabled}
+            quoteCaptionPreset={quoteCaptionPreset}
+            setQuoteCaptionPreset={setQuoteCaptionPreset}
             targetDurationSec={targetDurationSec}
             setTargetDurationSec={setTargetDurationSec}
             minDurationSec={minDurationSec}
@@ -1011,23 +1201,43 @@ export default function HomePageClient() {
           />
         </div>
 
-        <JobsTimelinePanel
-          jobs={jobs}
-          canDeleteJobs={canDeleteJobs}
-          deletingJobs={deletingJobs}
-          isDownloading={isDownloading}
-          downloadingKey={downloadingKey}
-          onRefresh={fetchJobs}
-          onDeleteJob={deleteJob}
-          onDownload={downloadWithAuth}
-          openReview={openReview}
-          youtubeConnected={youtubeConnected}
-          youtubeChannelTitle={youtubeChannelTitle}
-          onConnectYoutube={connectYoutube}
-          onDisconnectYoutube={disconnectYoutube}
-          publishingJobs={publishingJobs}
-          onPublishYoutube={publishToYoutube}
-        />
+        <aside className="w-full lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:w-[400px] lg:overflow-y-auto">
+          <div className="space-y-4">
+            <RecipePanel
+              goal={jobGoal}
+              summary={recipeSummary}
+              ctaLabel={ctaLabel}
+              canGenerate={canGenerate}
+              loading={loading}
+              onGenerate={() => handleGenerate()}
+              paywallMessage={paywallMessage}
+              showUpgrade={showUpgrade}
+              startCheckout={startCheckout}
+              savedRecipes={savedRecipes}
+              onSaveRecipe={saveRecipe}
+              onApplyRecipe={applyRecipe}
+              onDeleteRecipe={deleteRecipe}
+            />
+
+            <JobsTimelinePanel
+              jobs={jobs}
+              canDeleteJobs={canDeleteJobs}
+              deletingJobs={deletingJobs}
+              isDownloading={isDownloading}
+              downloadingKey={downloadingKey}
+              onRefresh={fetchJobs}
+              onDeleteJob={deleteJob}
+              onDownload={downloadWithAuth}
+              openReview={openReview}
+              youtubeConnected={youtubeConnected}
+              youtubeChannelTitle={youtubeChannelTitle}
+              onConnectYoutube={connectYoutube}
+              onDisconnectYoutube={disconnectYoutube}
+              publishingJobs={publishingJobs}
+              onPublishYoutube={publishToYoutube}
+            />
+          </div>
+        </aside>
       </div>
 
       {reviewJob && reviewJob.jobGoal === "shorts" && reviewJob.reviewReady && (
