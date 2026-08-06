@@ -69,14 +69,30 @@ type SubtitleGenerationOptions = {
   premiumKeywords?: string[];
 };
 
-const DEFAULT_FONT = "Inter";
+// Caption faces. These must exist in public/fonts (see render.ts fontsdir).
+// Heavy display faces are what make short-form captions read as "designed"
+// rather than as a subtitle track — Inter is a UI face and disappears on busy
+// footage. Anton and Bebas Neue are single-weight display faces (fontconfig
+// reports their Regular as the heavy cut), and Poppins ships as a true
+// ExtraBold, so all three must be used with Bold=0: asking libass for bold on
+// top of an already-heavy face triggers synthetic bolding and smears the
+// letterforms.
+const DEFAULT_FONT = process.env.CAPTION_FONT?.trim() || "Poppins ExtraBold";
+// Understated face for the "subtle" style, where staying out of the way is the point.
+const SUBTLE_FONT = process.env.CAPTION_SUBTLE_FONT?.trim() || "Inter";
+// Condensed face for the high-impact style — fits more characters per line at a
+// much larger optical size.
+const IMPACT_FONT = process.env.CAPTION_IMPACT_FONT?.trim() || "Anton";
+
 const CAPTION_FONT_ALIASES: Record<string, string> = {
   gluten: "Gluten Medium",
   "gluten regular": "Gluten Medium",
   "gluten-regular": "Gluten Medium",
 };
 
-const CHUNK_SIZE = 4;
+// Fewer words on screen at a larger size is the single biggest readability win
+// on a phone held at arm's length.
+const CHUNK_SIZE = 3;
 const CAPTION_CHUNK_BREAK_GAP_SEC = Number(
   process.env.QUOTE_REEL_CAPTION_CHUNK_BREAK_GAP_SEC ?? 0.24,
 );
@@ -86,7 +102,7 @@ const CAPTION_MAX_CHUNK_DURATION_SEC = Number(
 );
 const LINE_FADE_IN_MS = 40;
 const LINE_FADE_OUT_MS = 80;
-const KARAOKE_POP_SCALE = 118;
+const KARAOKE_POP_SCALE = 128;
 const KARAOKE_POP_IN_MS = 70;
 const KARAOKE_POP_OUT_MS = 80;
 
@@ -118,7 +134,10 @@ const PREMIUM_HIGHLIGHT_WORDS = new Set(
 // &H0000D7FF& = warm yellow/orange-ish highlight.
 const PREMIUM_HIGHLIGHT_COLOR = "&H0000D7FF&";
 const PREMIUM_WHITE_COLOR = "&H00FFFFFF&";
-const PREMIUM_OUTLINE_COLOR = "&HEE000000&";
+// Fully opaque: per-word tags override the style's outline colour, so a
+// translucent value here quietly thinned the stroke on exactly the word being
+// emphasised.
+const PREMIUM_OUTLINE_COLOR = "&HFF000000&";
 
 type ElevenLabsScribeWord = {
   text?: string;
@@ -426,11 +445,11 @@ function buildDefaultStyleLine(
       "Style: " +
       [
         base.Name,
-        base.Fontname,
-        52,
+        SUBTLE_FONT,
+        60,
         "&H00FFFFFF&",
         "&H00FFFFFF&",
-        "&H99000000&",
+        "&HBB000000&",
         "&H00000000&",
         0,
         0,
@@ -441,8 +460,8 @@ function buildDefaultStyleLine(
         0,
         0,
         1,
+        5,
         3,
-        2,
         2,
         base.MarginL,
         base.MarginR,
@@ -457,23 +476,29 @@ function buildDefaultStyleLine(
       "Style: " +
       [
         base.Name,
-        base.Fontname,
-        64,
-        "&H0000FFFF&",
+        IMPACT_FONT,
+        // IMPACT_FONT is condensed, so it carries a larger optical size than a
+        // geometric face at the same point size without wrapping.
+        96,
+        // Warm yellow (#FFE500) reads richer on video than pure #FFFF00, which
+        // clips and fringes after compression.
+        "&H0000E5FF&",
         "&H00FFFFFF&",
-        "&HEE000000&",
+        "&HFF000000&",
         "&H00000000&",
-        1,
+        // Bold=0: IMPACT_FONT is already a heavy display cut, so libass must not
+        // synthesise bold on top of it.
+        0,
         0,
         0,
         0,
         base.ScaleX,
         base.ScaleY,
-        0,
+        2,
         0,
         1,
-        7,
-        4,
+        10,
+        6,
         2,
         base.MarginL,
         base.MarginR,
@@ -484,23 +509,30 @@ function buildDefaultStyleLine(
   }
 
   if (style === "wordByWord" || style === "progressiveWords") {
-    return buildDefaultStyleLine("karaoke", fontName);
+    // Forward the preset: dropping it here made the quote-reel card presets fall
+    // back to the generic sizes instead of their intended card sizes.
+    return buildDefaultStyleLine("karaoke", fontName, quoteReelCaptionPreset);
   }
+
+  const isBottomCard =
+    quoteReelCaptionPreset === "card_bottom_karaoke" ||
+    quoteReelCaptionPreset === "card_bottom_premium_karaoke";
 
   return (
     "Style: " +
     [
       "Default",
       fontName,
-      quoteReelCaptionPreset === "card_bottom_karaoke" ||
-        quoteReelCaptionPreset === "card_bottom_premium_karaoke"
-        ? QUOTE_CARD_KARAOKE_FONT_SIZE
-        : 74,
+      isBottomCard ? QUOTE_CARD_KARAOKE_FONT_SIZE : 84,
       "&H00FFFFFF&",
-      "&H00FFD200&",
-      "&HDD000000&",
+      // Karaoke SecondaryColour = words not yet spoken. A dimmed grey lets the
+      // spoken text lead; the previous saturated blue pulled the eye forward to
+      // words the viewer hadn't heard yet.
+      "&H00A8A8A8&",
+      "&HFF000000&",
       "&H00000000&",
-      1,
+      // Bold=0 — DEFAULT_FONT is an ExtraBold cut; synthetic bold would smear it.
+      0,
       0,
       0,
       0,
@@ -509,14 +541,8 @@ function buildDefaultStyleLine(
       0,
       0,
       1,
-      quoteReelCaptionPreset === "card_bottom_karaoke" ||
-        quoteReelCaptionPreset === "card_bottom_premium_karaoke"
-        ? 6
-        : 4,
-      quoteReelCaptionPreset === "card_bottom_karaoke" ||
-        quoteReelCaptionPreset === "card_bottom_premium_karaoke"
-        ? 4
-        : 2,
+      isBottomCard ? 9 : 8,
+      isBottomCard ? 6 : 5,
       2,
       80,
       80,
@@ -544,23 +570,23 @@ function buildCenterWordStyleLine(
       "Style: " +
       [
         "QuoteCenterWord",
-        fontName,
-        88,
-        "&H0000FFFF&",
+        IMPACT_FONT,
+        104,
+        "&H0000E5FF&",
         "&H00FFFFFF&",
-        "&HEE000000&",
+        "&HFF000000&",
         "&H00000000&",
-        1,
+        0,
         0,
         0,
         0,
         100,
         100,
-        0,
+        2,
         0,
         1,
+        11,
         7,
-        4,
         5,
         40,
         40,
@@ -575,11 +601,11 @@ function buildCenterWordStyleLine(
       "Style: " +
       [
         "QuoteCenterWord",
-        fontName,
-        76,
+        SUBTLE_FONT,
+        84,
         "&H00FFFFFF&",
         "&H00FFFFFF&",
-        "&HAA000000&",
+        "&HBB000000&",
         "&H00000000&",
         0,
         0,
@@ -590,8 +616,8 @@ function buildCenterWordStyleLine(
         0,
         0,
         1,
-        4,
-        2,
+        6,
+        3,
         5,
         40,
         40,
@@ -602,7 +628,9 @@ function buildCenterWordStyleLine(
   }
 
   if (style === "wordByWord" || style === "progressiveWords") {
-    return buildCenterWordStyleLine("karaoke", fontName);
+    // Forward the preset — without it the centre word rendered at the fallback
+    // 86px instead of the preset's 112px / 92px, ~23% smaller than designed.
+    return buildCenterWordStyleLine("karaoke", fontName, quoteReelCaptionPreset);
   }
 
   return (
@@ -612,10 +640,13 @@ function buildCenterWordStyleLine(
       fontName,
       quoteCardFontSize,
       "&H00FFFFFF&",
-      "&H00FFD200&",
-      "&HDD000000&",
+      // Karaoke SecondaryColour = words not yet spoken. A dimmed grey lets the
+      // spoken text lead; the previous saturated blue pulled the eye forward to
+      // words the viewer hadn't heard yet.
+      "&H00A8A8A8&",
+      "&HFF000000&",
       "&H00000000&",
-      1,
+      0,
       0,
       0,
       0,
@@ -624,8 +655,8 @@ function buildCenterWordStyleLine(
       0,
       0,
       1,
+      9,
       5,
-      3,
       5,
       40,
       40,
