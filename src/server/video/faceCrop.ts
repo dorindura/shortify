@@ -7,6 +7,10 @@ export type SmartCropSegment = {
     tEnd: number;
     centerXNorm: number;
     hasFace: boolean;
+    // True when this segment begins on a hard camera cut. The renderer must
+    // step to it instantly: easing across a cut pans over a picture that is no
+    // longer on screen, which reads as the crop "arriving late".
+    hardCut?: boolean;
 };
 
 export type SmartCropBox = {
@@ -32,6 +36,7 @@ type ClipAnalysis = {
     fps?: number;
     duration?: number;
     faces?: FaceTrack[];
+    cuts?: number[];
     error?: string;
 };
 
@@ -88,13 +93,43 @@ function runFaceAnalyzer(clips: string[]): Promise<ClipAnalysis[]> {
     });
 }
 
-function getPointNearTime(track: FaceTrack, t: number, maxGap: number): FaceTimelinePoint | null {
+type ShotWindow = { start: number; end: number };
+
+// The shot containing t, bounded by the surrounding camera cuts. Every face
+// statistic is confined to this window: an observation from before the cut
+// describes a different picture entirely, so letting it vote is what kept the
+// crop briefly holding the previous shot's subject after a cut.
+function shotBoundsAt(cuts: number[], t: number, duration: number): ShotWindow {
+    let start = 0;
+    let end = duration;
+
+    for (const c of cuts) {
+        if (c <= t + 1e-9 && c > start) start = c;
+        if (c > t + 1e-9 && c < end) end = c;
+    }
+
+    return { start, end };
+}
+
+function inShot(p: FaceTimelinePoint, shot?: ShotWindow): boolean {
+    if (!shot) return true;
+    return p.t >= shot.start - 1e-9 && p.t < shot.end + 1e-9;
+}
+
+function getPointNearTime(
+    track: FaceTrack,
+    t: number,
+    maxGap: number,
+    shot?: ShotWindow
+): FaceTimelinePoint | null {
     if (!track.timeline.length) return null;
 
     let best: FaceTimelinePoint | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
 
     for (const p of track.timeline) {
+        if (!inShot(p, shot)) continue;
+
         const d = Math.abs(p.t - t);
         if (d < bestDist) {
             bestDist = d;
@@ -104,12 +139,74 @@ function getPointNearTime(track: FaceTrack, t: number, maxGap: number): FaceTime
     return best && bestDist <= maxGap ? best : null;
 }
 
-type TimeSample = { t: number; trackIndex: number | null; x: number };
+type TimeSample = { t: number; trackIndex: number | null; x: number; hardCut: boolean };
+
+function pointsInWindow(
+    track: FaceTrack,
+    t: number,
+    win: number,
+    shot?: ShotWindow
+): FaceTimelinePoint[] {
+    return track.timeline.filter((p) => Math.abs(p.t - t) <= win && inShot(p, shot));
+}
+
+// The analyzer's own sampling rate, recovered from the timelines so the
+// presence maths below does not depend on a constant shared across languages.
+function estimateSampleRate(faces: FaceTrack[]): number {
+    const gaps: number[] = [];
+
+    for (const f of faces) {
+        for (let i = 1; i < f.timeline.length; i++) {
+            const d = f.timeline[i].t - f.timeline[i - 1].t;
+            if (d > 1e-6 && d < 1) gaps.push(d);
+        }
+    }
+
+    if (!gaps.length) return 10;
+
+    gaps.sort((a, b) => a - b);
+    const median = gaps[Math.floor(gaps.length / 2)];
+    return median > 1e-6 ? 1 / median : 10;
+}
+
+// How reliably the detector actually sees this face around t, 0..1. A face
+// present on nearly every sample is a far safer subject than one flickering in
+// and out, and in a wide two-shot presence separates the two people much more
+// cleanly than face size does - size just picks whoever sits closest to the
+// camera, speaking or not.
+function presenceScore(
+    track: FaceTrack,
+    t: number,
+    win: number,
+    sampleRate: number,
+    shot?: ShotWindow
+): number {
+    // Expected count is measured over the part of the window that actually lies
+    // inside the shot, so a face is not punished for the shot being young.
+    const from = Math.max(t - win, shot?.start ?? t - win);
+    const to = Math.min(t + win, shot?.end ?? t + win);
+    const expected = Math.max(1, Math.round(Math.max(0, to - from) * sampleRate));
+
+    return clamp01(pointsInWindow(track, t, win, shot).length / expected);
+}
+
+// Speaking shows up as the mouth repeatedly opening and closing, so the spread
+// of openness across a short window carries the signal. The instantaneous value
+// does not: a resting mouth and a mid-syllable mouth can read the same.
+function mouthActivity(track: FaceTrack, t: number, win: number, shot?: ShotWindow): number {
+    const vals = pointsInWindow(track, t, win, shot).map((p) => p.mouth ?? 0);
+    if (vals.length < 3) return 0;
+
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+    return Math.sqrt(variance);
+}
 
 function buildTimeSamples(
     faces: FaceTrack[],
     duration: number,
-    energyFrames: EnergyFrame[] = []
+    energyFrames: EnergyFrame[] = [],
+    cuts: number[] = []
 ): TimeSample[] {
     const samples: TimeSample[] = [];
     if (!faces.length || duration <= 0) return samples;
@@ -119,11 +216,27 @@ function buildTimeSamples(
 
     const ENERGY_SPEECH_THRESHOLD = 0.18;
 
+    // Window used for the presence and mouth statistics.
+    const STAT_WIN = 0.75;
+    // Mouth stdev that counts as "clearly talking"; measured off real podcast
+    // footage, where an active speaker sits around 0.02-0.03.
+    const MOUTH_ACTIVITY_FULL = 0.03;
+
+    // Scoring weights. Presence leads because it is the most trustworthy signal
+    // at wide-shot face sizes; mouth activity breaks ties between two equally
+    // present faces; area only nudges, since it otherwise always elects
+    // whoever is nearest the lens.
+    const W_PRESENCE = 0.40;
+    const W_MOUTH = 0.40;
+    const W_AREA = 0.20;
+
     // stability knobs (these are the important ones)
     const MIN_HOLD_SEC = 1.0;         // never switch more often than this
     const REQUIRED_WINS = 3;          // best must win this many consecutive samples
     const SWITCH_BOOST = 1.25;        // best must be 25% better than current
-    const STICKY_BONUS = 0.15;        // keep current track stable
+    const STICKY_BONUS = 0.10;        // keep current track stable
+
+    const sampleRate = estimateSampleRate(faces);
 
     let currentTrackIndex: number | null = null;
     let currentX = 0.5;
@@ -135,38 +248,67 @@ function buildTimeSamples(
     let lastSeenFaceT = -1;
 
     for (let t = 0; t <= duration + 1e-3; t += dt) {
+        // A hard cut ends all continuity: the subject we were holding may not
+        // even be on screen any more. Drop the lock and the hysteresis so the
+        // next sample re-elects a subject immediately instead of spending up to
+        // MIN_HOLD_SEC + REQUIRED_WINS framing the previous shot.
+        const isCut = cuts.some((c) => c > t - dt && c <= t + 1e-9);
+
+        if (isCut) {
+            currentTrackIndex = null;
+            candidateIdx = null;
+            candidateWins = 0;
+            lastSwitchT = -1e9;
+        }
+
         const e = energyAt(energyFrames ?? [], t);
         const speechHint = e >= ENERGY_SPEECH_THRESHOLD;
 
-        const candidates: { idx: number; score: number; x: number }[] = [];
+        const shot = shotBoundsAt(cuts, t, duration);
+
+        const raw: { idx: number; area: number; presence: number; mouth: number; x: number }[] = [];
 
         faces.forEach((track, idx) => {
-            const pt = getPointNearTime(track, t, maxGap);
+            const pt = getPointNearTime(track, t, maxGap, shot);
             if (!pt) return;
 
-            const area = (pt.w ?? 0) * (pt.h ?? 0);
-            const mouth = pt.mouth ?? 0;
+            raw.push({
+                idx,
+                area: (pt.w ?? 0) * (pt.h ?? 0),
+                presence: presenceScore(track, t, STAT_WIN, sampleRate, shot),
+                mouth: mouthActivity(track, t, STAT_WIN, shot),
+                x: clamp01(pt.x),
+            });
+        });
 
-            // IMPORTANT: mouth can be noisy. Only use it as a *small* boost.
-            // And only when we have a speech hint.
-            let score = area;
-            if (speechHint) score += mouth * 1.5;
+        const maxArea = Math.max(1e-9, ...raw.map((r) => r.area));
 
-            // sticky bonus
-            if (currentTrackIndex !== null && idx === currentTrackIndex) {
+        const candidates = raw.map((r) => {
+            // Everything is normalised into 0..1 before weighting. The previous
+            // scoring summed a raw area (~0.03) against a sticky bonus (0.15),
+            // so the bonus silently outweighed every real signal.
+            const areaNorm = clamp01(r.area / maxArea);
+            const mouthNorm = clamp01(r.mouth / MOUTH_ACTIVITY_FULL);
+
+            let score =
+                W_PRESENCE * r.presence +
+                W_MOUTH * (speechHint ? mouthNorm : mouthNorm * 0.5) +
+                W_AREA * areaNorm;
+
+            if (currentTrackIndex !== null && r.idx === currentTrackIndex) {
                 score += STICKY_BONUS;
             }
 
-            candidates.push({ idx, score, x: clamp01(pt.x) });
+            return { idx: r.idx, score, x: r.x };
         });
 
         candidates.sort((a, b) => b.score - a.score);
 
         if (!candidates.length) {
             if (currentTrackIndex !== null && t - lastSeenFaceT <= 1.2) {
-                samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+                samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             } else {
-                samples.push({ t, trackIndex: null, x: currentX }); // hold lastX
+                samples.push({ t, trackIndex: null, x: currentX, hardCut: isCut }); // hold lastX
             }
             continue;
         }
@@ -178,7 +320,7 @@ function buildTimeSamples(
             currentTrackIndex = best.idx;
             currentX = best.x;
             lastSeenFaceT = t;
-            samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+            samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             continue;
         }
 
@@ -190,7 +332,7 @@ function buildTimeSamples(
             lastSeenFaceT = t;
             candidateIdx = null;
             candidateWins = 0;
-            samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+            samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             continue;
         }
 
@@ -198,7 +340,7 @@ function buildTimeSamples(
         if (t - lastSwitchT < MIN_HOLD_SEC) {
             currentX = curr.x;
             lastSeenFaceT = t;
-            samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+            samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             continue;
         }
 
@@ -214,7 +356,7 @@ function buildTimeSamples(
 
             currentX = curr.x;
             lastSeenFaceT = t;
-            samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+            samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             continue;
         }
 
@@ -236,14 +378,14 @@ function buildTimeSamples(
             candidateWins = 0;
 
             lastSeenFaceT = t;
-            samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+            samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
             continue;
         }
 
-        // not enough wins yet → hold current
+        // not enough wins yet -> hold current
         currentX = curr.x;
         lastSeenFaceT = t;
-        samples.push({ t, trackIndex: currentTrackIndex, x: currentX });
+        samples.push({ t, trackIndex: currentTrackIndex, x: currentX, hardCut: isCut });
     }
 
     return samples;
@@ -254,7 +396,7 @@ function buildTimeSamples(
 function samplesToSegments(samples: TimeSample[], duration: number): SmartCropSegment[] {
     if (!samples.length || duration <= 0) return [];
 
-    // DO NOT delete short segments. Beta needs “something” rather than center fallback.
+    // DO NOT delete short segments. Beta needs "something" rather than center fallback.
     const maxXShiftPerSegment = 0.12;
 
     const segs: {
@@ -264,6 +406,7 @@ function samplesToSegments(samples: TimeSample[], duration: number): SmartCropSe
         sumX: number;
         count: number;
         lastX: number;
+        hardCut: boolean;
     }[] = [];
 
     let cur: (typeof segs)[number] | null = null;
@@ -273,21 +416,23 @@ function samplesToSegments(samples: TimeSample[], duration: number): SmartCropSe
         const nextT = i < samples.length - 1 ? samples[i + 1].t : duration;
 
         if (!cur) {
-            cur = { tStart: s.t, tEnd: nextT, trackIndex: s.trackIndex, sumX: s.x, count: 1, lastX: s.x };
+            cur = { tStart: s.t, tEnd: nextT, trackIndex: s.trackIndex, sumX: s.x, count: 1, lastX: s.x, hardCut: s.hardCut };
             continue;
         }
 
         const sameTrack = cur.trackIndex === s.trackIndex;
         const xShift = Math.abs(s.x - cur.lastX);
 
-        if (sameTrack && xShift <= maxXShiftPerSegment) {
+        // A cut always breaks the segment, even when the subject barely moved,
+        // so the renderer can step rather than glide across it.
+        if (!s.hardCut && sameTrack && xShift <= maxXShiftPerSegment) {
             cur.tEnd = nextT;
             cur.sumX += s.x;
             cur.count += 1;
             cur.lastX = s.x;
         } else {
             segs.push(cur);
-            cur = { tStart: s.t, tEnd: nextT, trackIndex: s.trackIndex, sumX: s.x, count: 1, lastX: s.x };
+            cur = { tStart: s.t, tEnd: nextT, trackIndex: s.trackIndex, sumX: s.x, count: 1, lastX: s.x, hardCut: s.hardCut };
         }
     }
     if (cur) segs.push(cur);
@@ -297,11 +442,16 @@ function samplesToSegments(samples: TimeSample[], duration: number): SmartCropSe
         tEnd: s.tEnd,
         centerXNorm: clamp01(s.sumX / Math.max(1, s.count)),
         hasFace: s.trackIndex !== null,
+        hardCut: s.hardCut,
     }));
 }
 
 // Fill gaps by HOLDING lastX (never force 0.5)
-function fillGapsWithNeutral(faceSegments: SmartCropSegment[], duration: number): SmartCropSegment[] {
+function fillGapsWithNeutral(
+    faceSegments: SmartCropSegment[],
+    duration: number,
+    cuts: number[] = []
+): SmartCropSegment[] {
     const result: SmartCropSegment[] = [];
     const sorted = [...faceSegments].sort((a, b) => a.tStart - b.tStart);
 
@@ -310,7 +460,25 @@ function fillGapsWithNeutral(faceSegments: SmartCropSegment[], duration: number)
 
     for (const seg of sorted) {
         if (seg.tStart > cursor + 0.03) {
-            result.push({ tStart: cursor, tEnd: seg.tStart, centerXNorm: lastX, hasFace: false });
+            // A gap means the detector saw nobody. Holding the previous framing
+            // is only defensible while we are still inside the same shot; once
+            // the camera has cut, that framing describes a picture that is gone,
+            // which is how a clip ends up locked on empty furniture. From the
+            // cut onward, adopt the next known face position instead.
+            const cutInGap = cuts.find((c) => c > cursor + 1e-6 && c < seg.tStart - 1e-6);
+
+            if (cutInGap != null) {
+                result.push({ tStart: cursor, tEnd: cutInGap, centerXNorm: lastX, hasFace: false });
+                result.push({
+                    tStart: cutInGap,
+                    tEnd: seg.tStart,
+                    centerXNorm: seg.centerXNorm,
+                    hasFace: false,
+                    hardCut: true,
+                });
+            } else {
+                result.push({ tStart: cursor, tEnd: seg.tStart, centerXNorm: lastX, hasFace: false });
+            }
         }
         result.push(seg);
         cursor = seg.tEnd;
@@ -327,7 +495,7 @@ function fillGapsWithNeutral(faceSegments: SmartCropSegment[], duration: number)
 function smoothSegmentsBySpeed(
     segments: SmartCropSegment[],
     duration: number,
-    maxDeltaPerSec = 0.22 // 0.18–0.28 feels good; smaller = smoother
+    maxDeltaPerSec = 0.22 // 0.18-0.28 feels good; smaller = smoother
 ): SmartCropSegment[] {
     if (!segments.length) return segments;
 
@@ -339,10 +507,16 @@ function smoothSegmentsBySpeed(
         const maxDelta = maxDeltaPerSec * dt;
 
         let x = s.centerXNorm;
-        const delta = x - prevX;
 
-        if (Math.abs(delta) > maxDelta) {
-            x = prevX + Math.sign(delta) * maxDelta;
+        // Never rate-limit across a cut. The speed limit exists to keep pans
+        // watchable within a shot; applied to a cut it just makes the crop crawl
+        // toward the new subject over a second or more.
+        if (!s.hardCut) {
+            const delta = x - prevX;
+
+            if (Math.abs(delta) > maxDelta) {
+                x = prevX + Math.sign(delta) * maxDelta;
+            }
         }
 
         out.push({ ...s, centerXNorm: clamp01(x) });
@@ -351,6 +525,7 @@ function smoothSegmentsBySpeed(
 
     return out;
 }
+
 
 // ---- MAIN ----
 
@@ -389,10 +564,10 @@ export async function analyzeFaceCropsForClips(
             }
 
             const energyFrames = energyByClip?.[i] ?? [];
-            const samples = buildTimeSamples(faces, duration, energyFrames ?? []);
+            const cuts = analysis.cuts ?? [];
+            const samples = buildTimeSamples(faces, duration, energyFrames ?? [], cuts);
             const segments = samplesToSegments(samples, duration);
-            // const fullSegments = fillGapsWithNeutral(segments, duration);
-            const fullSegmentsRaw = fillGapsWithNeutral(segments, duration);
+            const fullSegmentsRaw = fillGapsWithNeutral(segments, duration, cuts);
             const fullSegments = smoothSegmentsBySpeed(fullSegmentsRaw, duration, 0.22);
 
             if (!fullSegments.length) {
@@ -409,6 +584,7 @@ export async function analyzeFaceCropsForClips(
                     tEnd: s.tEnd.toFixed(2),
                     x: s.centerXNorm.toFixed(3),
                     hasFace: s.hasFace,
+                    cut: !!s.hardCut,
                 }))
             );
 

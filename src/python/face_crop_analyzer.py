@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import cv2
+import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 import mediapipe as mp
 
@@ -20,6 +21,15 @@ mp_face_mesh = mp.solutions.face_mesh
 
 cv2.setUseOptimized(True)
 cv2.ocl.setUseOpenCL(False)
+
+# ~10 face samples per second regardless of source fps.
+SAMPLES_PER_SEC = 10.0
+
+# Mean absolute luma delta (0..1) between consecutive samples that counts as a
+# hard camera cut. Calibrated against a multi-camera podcast: real cuts scored
+# well above this, ordinary motion well below.
+SCENE_CUT_THRESHOLD = 0.085
+
 
 def clamp01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
@@ -115,9 +125,67 @@ def expand_bbox_edges(b, margin: float = 0.18) -> Dict[str, float]:
     return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
 
+def detections_from_result(det_results) -> List[Dict[str, Any]]:
+    """Normalize one MediaPipe FaceDetection result into our detection dicts."""
+    out: List[Dict[str, Any]] = []
+    if not det_results.detections:
+        return out
+
+    for det in det_results.detections:
+        loc = det.location_data
+        if not loc.HasField("relative_bounding_box"):
+            continue
+        bb = loc.relative_bounding_box
+
+        cx = clamp01(bb.xmin + bb.width / 2.0)
+        cy = clamp01(bb.ymin + bb.height / 2.0)
+        raw_w = clamp01(bb.width)
+        raw_h = clamp01(bb.height)
+
+        if raw_w <= 0.0 or raw_h <= 0.0:
+            continue
+
+        bbox = bbox_edges_from_cxcywh(cx, cy, raw_w, raw_h)
+        out.append({
+            "cx": float(cx),
+            "cy": float(cy),
+            "w": float(raw_w),
+            "h": float(raw_h),
+            "bbox": expand_bbox_edges(bbox, margin=0.18),
+            "mouth": 0.0,
+            "score": float(det.score[0]) if det.score else 0.0,
+        })
+
+    return out
+
+
+def merge_detections(primary, secondary, dedupe_iou: float = 0.35):
+    """
+    Keep every primary detection, then add secondary ones that do not already
+    overlap a primary. The two MediaPipe models have complementary blind spots:
+    full-range sees distant faces in a wide shot, short-range is stronger on
+    tight close-ups, and neither alone covers a multi-camera podcast.
+    """
+    merged = list(primary)
+    for cand in secondary:
+        if any(iou(cand["bbox"], kept["bbox"]) >= dedupe_iou for kept in merged):
+            continue
+        merged.append(cand)
+    return merged
+
+
+def scene_score(prev_gray, gray) -> float:
+    """Mean absolute luma difference between two downscaled frames, 0..1."""
+    if prev_gray is None or gray is None:
+        return 0.0
+    if prev_gray.shape != gray.shape:
+        return 0.0
+    return float(np.mean(np.abs(gray.astype(np.int16) - prev_gray.astype(np.int16))) / 255.0)
+
+
 def analyze_clip(
         clip_path: str,
-        sample_stride: int = 2,
+        sample_stride: int = 0,
         min_track_points: int = 5,
         max_assign_dist: float = 0.28,
         min_iou_gate: float = 0.01,
@@ -137,7 +205,17 @@ def analyze_clip(
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     duration = frame_count / fps if fps > 0 else 0.0
 
-    mp_fd = mp_face_detection.FaceDetection(
+    # model_selection=1 is the FULL-RANGE model and is the primary detector:
+    # the short-range model (=0) is built for faces within ~2m and finds zero
+    # faces in a wide two-shot at any analysis resolution, which is what left
+    # multi-camera clips framed on empty furniture. Short-range still runs as a
+    # secondary pass because it holds up better on tight close-ups.
+    mp_fd_far = mp_face_detection.FaceDetection(
+        model_selection=1,
+        min_detection_confidence=0.30
+    )
+
+    mp_fd_near = mp_face_detection.FaceDetection(
         model_selection=0,
         min_detection_confidence=0.30
     )
@@ -161,16 +239,23 @@ def analyze_clip(
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(debug_out, fourcc, fps, (W, H))
 
+    stride = sample_stride if sample_stride and sample_stride > 0 else max(1, int(round(fps / SAMPLES_PER_SEC)))
+
     frame_idx = 0
     written = 0
+
+    cuts: List[float] = []
+    prev_small_gray = None
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # OPTIMIZARE: Analizam doar fiecare al 5-lea cadru
-        if frame_idx % 5 != 0:
+        # Sample at a fixed ~SAMPLES_PER_SEC regardless of source fps. The old
+        # code hardcoded "every 5th frame", which silently ignored sample_stride
+        # and made the sample rate depend on the clip's fps.
+        if frame_idx % stride != 0:
             frame_idx += 1
             continue
 
@@ -184,33 +269,18 @@ def analyze_clip(
         rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         H_small, W_small = small_frame.shape[:2]
 
-        det_results = mp_fd.process(rgb_small)
-        detections: List[Dict[str, Any]] = []
+        # Camera-cut detection rides along on the frames we already decode. The
+        # selector needs these: holding a face lock across a hard cut is what
+        # made the crop sit on the previous shot's framing for seconds.
+        cut_gray = cv2.resize(cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY), (64, 36))
+        if scene_score(prev_small_gray, cut_gray) >= SCENE_CUT_THRESHOLD:
+            cuts.append(float(t))
+        prev_small_gray = cut_gray
 
-        if det_results.detections:
-            for det in det_results.detections:
-                loc = det.location_data
-                if not loc.HasField("relative_bounding_box"):
-                    continue
-                bb = loc.relative_bounding_box
-
-                # Coordonatele sunt normalizate (0.0 - 1.0), deci raman valabile
-                cx = clamp01(bb.xmin + bb.width / 2.0)
-                cy = clamp01(bb.ymin + bb.height / 2.0)
-                raw_w = clamp01(bb.width)
-                raw_h = clamp01(bb.height)
-
-                bbox = bbox_edges_from_cxcywh(cx, cy, raw_w, raw_h)
-                bbox_expanded = expand_bbox_edges(bbox, margin=0.18)
-
-                detections.append({
-                    "cx": float(cx),
-                    "cy": float(cy),
-                    "w": float(raw_w),
-                    "h": float(raw_h),
-                    "bbox": bbox_expanded,
-                    "mouth": 0.0,
-                })
+        detections = merge_detections(
+            detections_from_result(mp_fd_far.process(rgb_small)),
+            detections_from_result(mp_fd_near.process(rgb_small)),
+        )
 
         # Calculam mouth openness pe ROI din imaginea mica
         for d in detections:
@@ -297,7 +367,8 @@ def analyze_clip(
         frame_idx += 1
 
     cap.release()
-    mp_fd.close()
+    mp_fd_far.close()
+    mp_fd_near.close()
     mp_fm.close()
     if writer is not None: writer.release()
 
@@ -312,13 +383,15 @@ def analyze_clip(
         "fps": float(fps),
         "duration": float(duration),
         "faces": faces,
+        "cuts": cuts,
     }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--clips", nargs="+", required=True, help="List of clip paths")
-    parser.add_argument("--sample-stride", type=int, default=2)
+    parser.add_argument("--sample-stride", type=int, default=0,
+                        help="Frames between samples; 0 derives it from fps.")
     parser.add_argument("--debug-out", type=str, default=None)
     parser.add_argument("--debug-max-frames", type=int, default=0)
     args = parser.parse_args()

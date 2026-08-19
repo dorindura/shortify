@@ -230,6 +230,16 @@ function buildCropXExprForSegments(segments: SmartCropSegment[]): string {
     const x1 = exprForCx(next.centerXNorm);
     const B = next.tStart;
 
+    // A hard camera cut gets a hard crop change. Easing over +/-D across a cut
+    // spends most of a second panning over a shot that is already gone, which
+    // is exactly what reads as the reframe "arriving late" - and viewers never
+    // read an instant change at a cut as a jump, because the picture changed
+    // underneath it anyway.
+    if (next.hardCut) {
+      raw = `if(lt(t\\,${B.toFixed(3)})\\,${x0}\\,${raw})`;
+      continue;
+    }
+
     const u = `clip((t-${(B - D).toFixed(3)})/${(2 * D).toFixed(3)}\\,0\\,1)`;
     const eased = smoothstep(u);
     const blend = lerp(x0, x1, eased);

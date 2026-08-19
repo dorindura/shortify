@@ -138,6 +138,11 @@ const PREMIUM_WHITE_COLOR = "&H00FFFFFF&";
 // translucent value here quietly thinned the stroke on exactly the word being
 // emphasised.
 const PREMIUM_OUTLINE_COLOR = "&HFF000000&";
+// Karaoke reads best when the eye is pulled to the word being spoken rather
+// than away from it: every word sits in white and only the active one lifts to
+// the premium gold, so nothing on screen is ever dimmed or hard to read.
+const KARAOKE_BASE_COLOR = PREMIUM_WHITE_COLOR;
+const KARAOKE_ACTIVE_COLOR = PREMIUM_HIGHLIGHT_COLOR;
 
 type ElevenLabsScribeWord = {
   text?: string;
@@ -524,11 +529,13 @@ function buildDefaultStyleLine(
       "Default",
       fontName,
       isBottomCard ? QUOTE_CARD_KARAOKE_FONT_SIZE : 84,
-      "&H00FFFFFF&",
-      // Karaoke SecondaryColour = words not yet spoken. A dimmed grey lets the
-      // spoken text lead; the previous saturated blue pulled the eye forward to
-      // words the viewer hadn't heard yet.
-      "&H00A8A8A8&",
+      KARAOKE_BASE_COLOR,
+      // Both karaoke colours are white on purpose, which makes \k visually
+      // inert: ASS keeps a word in PrimaryColour once sung, so colouring
+      // Primary here would leave every already-spoken word gold instead of only
+      // the current one. The active-word gold is driven by the per-word \1c
+      // transforms in buildKaraokeTextFromDraftChunk.
+      KARAOKE_BASE_COLOR,
       "&HFF000000&",
       "&H00000000&",
       // Bold=0 — DEFAULT_FONT is an ExtraBold cut; synthetic bold would smear it.
@@ -894,10 +901,13 @@ function buildKaraokeTextFromDraftChunk(
 
     assText +=
       `{\\k${durCs}}` +
-      `{\\t(${wordStartMs},${popInEnd},\\fscx${popScale}\\fscy${popScale})` +
-      `\\t(${popOutStart},${wordEndMs},\\fscx100\\fscy100)}` +
+      // Colour rides the same envelope as the scale pop: the word lifts to gold
+      // as it is spoken and settles back to white as it finishes, so exactly one
+      // word carries the accent at any moment.
+      `{\\t(${wordStartMs},${popInEnd},\\fscx${popScale}\\fscy${popScale}\\1c${KARAOKE_ACTIVE_COLOR})` +
+      `\\t(${popOutStart},${wordEndMs},\\fscx100\\fscy100\\1c${KARAOKE_BASE_COLOR})}` +
       `${rawWord}` +
-      `{\\fscx100\\fscy100}`;
+      `{\\fscx100\\fscy100\\1c${KARAOKE_BASE_COLOR}}`;
 
     cursorMs += durMs;
   }
